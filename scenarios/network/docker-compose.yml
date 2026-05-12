@@ -1,0 +1,54 @@
+name: use-practice-network
+
+x-toolbox: &toolbox
+  build:
+    context: ../../tools
+  image: use-practice/toolbox:latest
+  environment:
+    CULPRIT: ${CULPRIT}
+    SINK_PORT: ${SINK_PORT}
+    BW_MBPS: ${BW_MBPS}
+    PARALLEL: ${PARALLEL}
+  init: true
+  restart: unless-stopped
+
+x-cmd: &cmd
+  command:
+    - |
+      ROLE=$$(hostname)
+      if [ "$$ROLE" = "$$CULPRIT" ]; then
+        # tiny stagger so the sink is ready
+        sleep 2
+        while true; do
+          iperf3 -c sink -p "$$SINK_PORT" -t 60 -b "$${BW_MBPS}M" -P "$$PARALLEL" >/dev/null 2>&1 || sleep 1
+        done
+      else
+        exec sleep infinity
+      fi
+
+services:
+  sink:
+    <<: *toolbox
+    hostname: sink
+    command:
+      - exec iperf3 -s -p "$$SINK_PORT"
+  api:
+    <<: [*toolbox, *cmd]
+    hostname: api
+    depends_on: [sink]
+  worker:
+    <<: [*toolbox, *cmd]
+    hostname: worker
+    depends_on: [sink]
+  cache:
+    <<: [*toolbox, *cmd]
+    hostname: cache
+    depends_on: [sink]
+  queue:
+    <<: [*toolbox, *cmd]
+    hostname: queue
+    depends_on: [sink]
+  auth:
+    <<: [*toolbox, *cmd]
+    hostname: auth
+    depends_on: [sink]

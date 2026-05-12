@@ -1,0 +1,49 @@
+name: use-practice-hotpath
+
+x-app: &app
+  build:
+    context: .
+  image: use-practice/hotpath:latest
+  init: true
+  restart: unless-stopped
+  cap_add:
+    - SYS_PTRACE
+  environment:
+    CULPRIT: ${CULPRIT}
+    HOT_ENDPOINT: ${HOT_ENDPOINT}
+    HOT_SIZE: ${HOT_SIZE}
+  command: ["python", "/app/server.py"]
+
+services:
+  api:
+    <<: *app
+    hostname: api
+  worker:
+    <<: *app
+    hostname: worker
+  cache:
+    <<: *app
+    hostname: cache
+  queue:
+    <<: *app
+    hostname: queue
+  auth:
+    <<: *app
+    hostname: auth
+  loadgen:
+    image: use-practice/hotpath:latest
+    build:
+      context: .
+    init: true
+    restart: unless-stopped
+    hostname: loadgen
+    environment:
+      TARGETS: "api,worker,cache,queue,auth"
+      RPS_PER_TARGET: ${RPS_PER_TARGET}
+    command: ["python", "/app/loadgen.py"]
+    depends_on:
+      - api
+      - worker
+      - cache
+      - queue
+      - auth

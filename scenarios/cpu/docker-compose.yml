@@ -1,0 +1,38 @@
+name: use-practice-cpu
+
+x-toolbox: &toolbox
+  build:
+    context: ../../tools
+  image: use-practice/toolbox:latest
+  environment:
+    CULPRIT: ${CULPRIT}
+    WORKERS: ${WORKERS}
+  init: true
+  restart: unless-stopped
+
+x-cmd: &cmd
+  command:
+    - |
+      ROLE=$$(hostname)
+      if [ "$$ROLE" = "$$CULPRIT" ]; then
+        exec stress-ng --cpu "$$WORKERS" --cpu-method matrixprod --metrics-brief
+      else
+        exec sleep infinity
+      fi
+
+services:
+  api:
+    <<: [*toolbox, *cmd]
+    hostname: api
+  worker:
+    <<: [*toolbox, *cmd]
+    hostname: worker
+  cache:
+    <<: [*toolbox, *cmd]
+    hostname: cache
+  queue:
+    <<: [*toolbox, *cmd]
+    hostname: queue
+  auth:
+    <<: [*toolbox, *cmd]
+    hostname: auth
