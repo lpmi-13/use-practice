@@ -1,0 +1,58 @@
+name: use-practice-disk
+
+x-toolbox: &toolbox
+  build:
+    context: ../../tools
+  image: use-practice/toolbox:latest
+  environment:
+    CULPRIT: ${CULPRIT}
+    BS_K: ${BS_K}
+    IODEPTH: ${IODEPTH}
+    RW: ${RW}
+  init: true
+  restart: unless-stopped
+  volumes:
+    - scratch:/data
+
+x-cmd: &cmd
+  command:
+    - |
+      ROLE=$$(hostname)
+      mkdir -p /data
+      if [ "$$ROLE" = "$$CULPRIT" ]; then
+        exec fio \
+          --name=use-practice \
+          --filename=/data/$$ROLE.bin \
+          --rw=$$RW \
+          --bs=$${BS_K}k \
+          --size=256M \
+          --time_based \
+          --runtime=86400 \
+          --direct=1 \
+          --ioengine=libaio \
+          --iodepth=$$IODEPTH \
+          --numjobs=1 \
+          --group_reporting
+      else
+        exec sleep infinity
+      fi
+
+services:
+  api:
+    <<: [*toolbox, *cmd]
+    hostname: api
+  worker:
+    <<: [*toolbox, *cmd]
+    hostname: worker
+  cache:
+    <<: [*toolbox, *cmd]
+    hostname: cache
+  queue:
+    <<: [*toolbox, *cmd]
+    hostname: queue
+  auth:
+    <<: [*toolbox, *cmd]
+    hostname: auth
+
+volumes:
+  scratch:

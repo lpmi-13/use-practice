@@ -1,0 +1,38 @@
+name: use-practice-memory
+
+x-toolbox: &toolbox
+  build:
+    context: ../../tools
+  image: use-practice/toolbox:latest
+  environment:
+    CULPRIT: ${CULPRIT}
+    MEM_MB: ${MEM_MB}
+  init: true
+  restart: unless-stopped
+
+x-cmd: &cmd
+  command:
+    - |
+      ROLE=$$(hostname)
+      if [ "$$ROLE" = "$$CULPRIT" ]; then
+        exec stress-ng --vm 1 --vm-bytes "$${MEM_MB}m" --vm-hang 0 --vm-keep
+      else
+        exec sleep infinity
+      fi
+
+services:
+  api:
+    <<: [*toolbox, *cmd]
+    hostname: api
+  worker:
+    <<: [*toolbox, *cmd]
+    hostname: worker
+  cache:
+    <<: [*toolbox, *cmd]
+    hostname: cache
+  queue:
+    <<: [*toolbox, *cmd]
+    hostname: queue
+  auth:
+    <<: [*toolbox, *cmd]
+    hostname: auth
