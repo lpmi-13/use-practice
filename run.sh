@@ -2,16 +2,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SCENARIOS=(cpu memory disk network)
+SCENARIOS=(cpu memory disk network hotpath)
 MODE="${1:-random}"
 
 usage() {
   cat <<EOF
-Usage: $0 [cpu|memory|disk|network|random]
+Usage: $0 [cpu|memory|disk|network|hotpath|random]
 
-  cpu|memory|disk|network   Run that specific scenario (verbose)
-  random (default)          Pick one at random and DON'T tell you which.
-                            Use the USE method to figure it out.
+  cpu|memory|disk|network|hotpath   Run that specific scenario (verbose)
+  random (default)                  Pick one at random and DON'T tell you
+                                    which. Use the USE method to figure it
+                                    out. 'hotpath' adds a profiler-drilldown
+                                    step on top of the CPU diagnosis.
 EOF
 }
 
@@ -21,7 +23,7 @@ pick_random() {
 
 case "$MODE" in
   -h|--help) usage; exit 0 ;;
-  cpu|memory|disk|network|random) ;;
+  cpu|memory|disk|network|hotpath|random) ;;
   *) usage; exit 1 ;;
 esac
 
@@ -54,6 +56,9 @@ Walk the USE method across every resource:
 Per-container view:
   docker stats
   docker exec <name> top -bn1
+
+If CPU is the resource but no obvious culprit binary jumps out, profile:
+  docker exec <name> py-spy top --pid $(docker exec <name> pgrep -f server.py)
 
 When you have an answer:
   ./reveal.sh        # prints what was actually wrong

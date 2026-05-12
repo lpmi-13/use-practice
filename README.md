@@ -9,12 +9,17 @@ resource type.
 
 ## Resources covered
 
-| Scenario | Workload tool | Randomised inputs                                     |
-|----------|---------------|-------------------------------------------------------|
-| `cpu`    | `stress-ng`   | culprit service, worker count (1-4)                   |
-| `memory` | `stress-ng`   | culprit service, resident size (300-800 MB)           |
-| `disk`   | `fio`         | culprit service, block size, iodepth, rw pattern      |
-| `network`| `iperf3`      | culprit service, sink port, bandwidth, parallel flows |
+| Scenario  | Workload tool          | Randomised inputs                                       |
+|-----------|------------------------|---------------------------------------------------------|
+| `cpu`     | `stress-ng`            | culprit service, worker count (1-4)                     |
+| `memory`  | `stress-ng`            | culprit service, resident size (300-800 MB)             |
+| `disk`    | `fio`                  | culprit service, block size, iodepth, rw pattern        |
+| `network` | `iperf3`               | culprit service, sink port, bandwidth, parallel flows   |
+| `hotpath` | Python HTTP + `py-spy` | culprit service, hot endpoint, loop size, request rate  |
+
+The `hotpath` scenario builds on `cpu`: USE method tells you *which container*
+is hot, then you use `py-spy` to find *which function* in that container is
+the offending nested for-loop.
 
 The "culprit" is one of five services with realistic names (`api`, `worker`,
 `cache`, `queue`, `auth`); the others sit idle. Every run picks a fresh
@@ -37,6 +42,7 @@ combination so it isn't the same problem twice.
 ./run.sh memory
 ./run.sh disk
 ./run.sh network
+./run.sh hotpath
 
 # Diagnose using your host tools (top, iostat -xz 1, sar -n DEV 1, ...)
 
@@ -75,7 +81,10 @@ walk-through and pointers on what the fix would look like in production.
     ├── cpu/
     ├── memory/
     ├── disk/
-    └── network/
+    ├── network/
+    └── hotpath/          # Python HTTP services + py-spy drill-down
+        ├── Dockerfile    # python:3.11-slim + py-spy (image is local to this scenario)
+        ├── app/          # server.py, loadgen.py
         ├── docker-compose.yml
         ├── start.sh        # randomises parameters, brings stack up
         ├── stop.sh
