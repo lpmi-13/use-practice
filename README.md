@@ -98,8 +98,10 @@ walk-through and pointers on what the fix would look like in production.
   which is correct &mdash; the USE method targets resources, not processes.
   Drill into per-container metrics only after you've identified the resource.
 - The disk scenario uses `--direct=1` so the page cache doesn't mask the load.
+  Its `fio` job rewrites one fixed 256 MiB file in a Docker volume; long runs
+  increase I/O counters, not disk allocation, and `scenarios/disk/stop.sh`
+  removes the volume.
 - The network scenario shares the default Compose bridge; `sar -n DEV 1`
   on the host will show the bridge/veth interfaces.
 - The `.env` and `.answer` files inside each scenario directory are
   gitignored. Don't peek at them &mdash; that's what `reveal.sh` is for.
-```

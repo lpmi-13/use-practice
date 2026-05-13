@@ -9,12 +9,14 @@ BS_K=${BS_OPTIONS[$((RANDOM % ${#BS_OPTIONS[@]}))]}
 IODEPTH=$((8 + RANDOM % 25))
 RW_OPTIONS=(randwrite randread randrw)
 RW=${RW_OPTIONS[$((RANDOM % ${#RW_OPTIONS[@]}))]}
+FIO_FILE_SIZE=256M
 
 cat > .env <<EOF
 CULPRIT=$CULPRIT
 BS_K=$BS_K
 IODEPTH=$IODEPTH
 RW=$RW
+FIO_FILE_SIZE=$FIO_FILE_SIZE
 EOF
 
 cat > .answer <<EOF
@@ -23,11 +25,13 @@ Culprit:   $CULPRIT
 Pattern:   $RW
 Block:     ${BS_K}k
 IO depth:  $IODEPTH
+File size: $FIO_FILE_SIZE
 Process:   fio (direct=1, libaio)
 EOF
 
 docker compose up -d --build >/dev/null
 echo "Disk scenario running. One service is hammering /data via fio."
+echo "Disk footprint is bounded to one ${FIO_FILE_SIZE} file in the Docker volume."
 echo
 echo "USE method starting points:"
 echo "  Utilization: iostat -xz 1   (look at %util column)"

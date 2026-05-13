@@ -9,6 +9,7 @@ x-toolbox: &toolbox
     BS_K: ${BS_K}
     IODEPTH: ${IODEPTH}
     RW: ${RW}
+    FIO_FILE_SIZE: ${FIO_FILE_SIZE}
   init: true
   restart: unless-stopped
   volumes:
@@ -20,12 +21,14 @@ x-cmd: &cmd
       ROLE=$$(hostname)
       mkdir -p /data
       if [ "$$ROLE" = "$$CULPRIT" ]; then
+        rm -f /data/*.bin
         exec fio \
           --name=use-practice \
-          --filename=/data/$$ROLE.bin \
+          --filename=/data/use-practice-fio.bin \
           --rw=$$RW \
           --bs=$${BS_K}k \
-          --size=256M \
+          --size=$$FIO_FILE_SIZE \
+          --filesize=$$FIO_FILE_SIZE \
           --time_based \
           --runtime=86400 \
           --direct=1 \

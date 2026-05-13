@@ -2,7 +2,9 @@
 
 ## Symptom
 One service is pounding the shared `scratch` volume with `fio`. Read/write
-latency on whatever underlying block device backs Docker rises.
+latency on whatever underlying block device backs Docker rises. The workload
+uses one fixed-size 256 MiB file, so running it longer increases block I/O
+counters but does not keep allocating more disk.
 
 ## USE method walk-through
 
@@ -21,6 +23,10 @@ docker exec <name> cat /proc/1/io
 
 The container with runaway `BlockIO` is the culprit. Inside, `pidstat -d 1` or
 `cat /proc/<pid>/io` will show fio doing the I/O.
+
+The scratch data lives in the Compose-managed Docker volume
+`use-practice-disk_scratch`. `./stop.sh` runs `docker compose down --volumes`,
+which removes that volume and the fixed workload file.
 
 ## Why this is a USE problem
 
