@@ -15,3 +15,5 @@ scenarios/*/.rendered-role.yaml
 .use-practice.local
 .tmp/
 __pycache__/
+
+use-practice

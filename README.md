@@ -93,12 +93,18 @@ the repo, `use-tool`, workload packages, and bootstrap service are baked into a
 custom root filesystem image, then `playground/iximiuz/manifest.yaml` points the
 playground at that image.
 
+Rootfs GHCR package:
+
+```text
+ghcr.io/lpmi-13/use-practice-rootfs
+```
+
 Build and optionally push the rootfs image:
 
 ```bash
 docker login ghcr.io
 
-# Uses ../use-tool/use-tool by default. Set USE_TOOL_BIN if needed.
+# Downloads the latest use-tool release by default.
 IMAGE_TAG=v1 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
 ```
 
@@ -107,6 +113,10 @@ This creates:
 ```text
 ghcr.io/lpmi-13/use-practice-rootfs:${IMAGE_TAG}
 ```
+
+Set `USE_TOOL_VERSION=v0.5.0` to pin a specific `use-tool` release tag. Leave it
+unset, or set `USE_TOOL_VERSION=latest`, to resolve the latest GitHub release at
+build time.
 
 The build script updates `playground/iximiuz/manifest.yaml` after a successful
 build. Verify the published image reference before creating or updating the

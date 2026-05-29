@@ -8,8 +8,8 @@ source "${repo_root}/scripts/lib/versions.sh"
 image_tag="${IMAGE_TAG:-${DEFAULT_FIRST_PARTY_IMAGE_TAG}}"
 rootfs_image="${ROOTFS_IMAGE:-${ROOTFS_IMAGE_REPO}:${image_tag}}"
 push_rootfs_image="${PUSH_ROOTFS_IMAGE:-${PUSH_IMAGE:-0}}"
-use_tool_root="${USE_TOOL_ROOT:-$(cd "${repo_root}/../use-tool" 2>/dev/null && pwd || true)}"
-use_tool_bin="${USE_TOOL_BIN:-}"
+use_tool_version="${USE_TOOL_VERSION:-${USE_TOOL_RELEASE_VERSION}}"
+use_tool_arch="${USE_TOOL_ARCH:-}"
 
 if [[ "${rootfs_image}" == oci://* ]]; then
   rootfs_image="${rootfs_image#oci://}"
@@ -29,6 +29,51 @@ copy_path() {
   cp -R "${source}" "${destination}"
 }
 
+detect_release_arch() {
+  local arch="${1:-$(uname -m)}"
+
+  case "${arch}" in
+    amd64|x86_64) echo "amd64" ;;
+    arm64|aarch64) echo "arm64" ;;
+    *) echo "error: unsupported use-tool release architecture '${arch}'." >&2; exit 1 ;;
+  esac
+}
+
+latest_use_tool_tag() {
+  curl -fsSL "https://api.github.com/repos/${USE_TOOL_RELEASE_REPO}/releases/latest" |
+    sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' |
+    head -n1
+}
+
+install_use_tool_release() {
+  local destination="$1"
+  local tag version arch asset base_url tmp
+
+  if [[ "${use_tool_version}" == "latest" ]]; then
+    tag="$(latest_use_tool_tag)"
+  else
+    tag="${use_tool_version}"
+  fi
+  [[ -n "${tag}" ]] || { echo "error: could not resolve latest use-tool release tag." >&2; exit 1; }
+
+  version="${tag#v}"
+  arch="$(detect_release_arch "${use_tool_arch:-}")"
+  asset="use-tool_${version}_linux_${arch}.tar.gz"
+  base_url="https://github.com/${USE_TOOL_RELEASE_REPO}/releases/download/${tag}"
+  tmp="$(mktemp -d /tmp/use-tool-release.XXXXXX)"
+
+  echo "Downloading use-tool ${tag} (${arch}) from GitHub releases..."
+  curl -fsSL -o "${tmp}/${asset}" "${base_url}/${asset}"
+  curl -fsSL -o "${tmp}/checksums.txt" "${base_url}/checksums.txt"
+
+  (cd "${tmp}" && grep -F "  ${asset}" checksums.txt | sha256sum -c -)
+  tar -xzf "${tmp}/${asset}" -C "${tmp}" use-tool
+  install -m 0755 "${tmp}/use-tool" "${destination}"
+  rm -rf "${tmp}"
+
+  echo "Installed use-tool ${tag} into the rootfs build context."
+}
+
 build_context="$(mktemp -d /tmp/use-practice-rootfs-build.XXXXXX)"
 trap 'rm -rf "${build_context}"' EXIT
 
@@ -37,9 +82,6 @@ cp "${repo_root}/playground/iximiuz/Dockerfile" "${build_context}/Dockerfile"
 cp -R "${repo_root}/playground/iximiuz/image" "${build_context}/playground/iximiuz/"
 
 for item in \
-  LICENSE \
-  PLAN.md \
-  README.md \
   reveal.sh \
   run.sh \
   scenarios \
@@ -57,24 +99,10 @@ find "${build_context}/use-practice" \
   \( -name .env -o -name .answer -o -name .run-id -o -name .pids -o -name .processes -o -name .netns -o -name .links \) \
   -type f -delete
 
-if [[ -z "${use_tool_bin}" && -n "${use_tool_root}" && -x "${use_tool_root}/use-tool" ]]; then
-  use_tool_bin="${use_tool_root}/use-tool"
-fi
+install_use_tool_release "${build_context}/use-tool/use-tool"
 
-if [[ -n "${use_tool_bin}" ]]; then
-  [[ -x "${use_tool_bin}" ]] || { echo "error: USE_TOOL_BIN is not executable: ${use_tool_bin}" >&2; exit 1; }
-  cp "${use_tool_bin}" "${build_context}/use-tool/use-tool"
-elif [[ -n "${use_tool_root}" && -f "${use_tool_root}/go.mod" ]] && command -v go >/dev/null 2>&1; then
-  echo "Building use-tool from ${use_tool_root}..."
-  (cd "${use_tool_root}" && go build -o "${build_context}/use-tool/use-tool" ./...)
-else
-  echo "error: could not find use-tool binary." >&2
-  echo "Set USE_TOOL_BIN=/path/to/use-tool or USE_TOOL_ROOT=/path/to/use-tool." >&2
-  exit 1
-fi
-
-chmod 755 "${build_context}/use-tool/use-tool"
-
+echo "Rootfs package: ${ROOTFS_IMAGE_REPO}"
+echo "Rootfs image:   ${rootfs_image}"
 echo "Building ${rootfs_image}..."
 docker build -t "${rootfs_image}" "${build_context}"
 

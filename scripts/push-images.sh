@@ -12,7 +12,8 @@ Pushes the iximiuz rootfs image to the configured registry.
 
 Environment:
   IMAGE_TAG      Image tag to push. Defaults to DEFAULT_FIRST_PARTY_IMAGE_TAG.
-  ROOTFS_IMAGE   Full rootfs image reference. Defaults to ROOTFS_IMAGE_REPO:IMAGE_TAG.
+  ROOTFS_IMAGE   Full rootfs image reference.
+                 Defaults to ghcr.io/lpmi-13/use-practice-rootfs:IMAGE_TAG.
 EOF
 }
 
@@ -41,5 +42,6 @@ if ! docker image inspect "${rootfs_image}" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "Rootfs package: ${ROOTFS_IMAGE_REPO}"
 echo "Pushing ${rootfs_image}..."
 docker push "${rootfs_image}"

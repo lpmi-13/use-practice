@@ -1,11 +1,11 @@
 kind: playground
-name: use-practice-5e9d1d9a
+name: use-practice-4ce4816f
 base: flexbox
 title: USE Practice
 description: Practice Linux USE-method investigations against randomized host-level scenarios.
 categories:
   - linux
-  - sre
+  - networking
   - observability
 playground:
   networks:
