@@ -1,7 +1,7 @@
 # CPU Scenario
 
 ## Symptom
-One of the services pegs CPU cores. The other four sleep.
+One of the services pegs CPU cores. The other services sleep.
 
 ## USE method walk-through
 
@@ -11,15 +11,24 @@ One of the services pegs CPU cores. The other four sleep.
 | Saturation   | `vmstat 1`                | `r` column (run queue) > #CPUs               |
 | Errors       | `dmesg`, `perf`           | Usually none for pure CPU work               |
 
-## Pinning it to a container
+## Pinning it to a host process
 
 ```bash
-docker stats --no-stream
-docker exec <name> top -bn1 | head
+./use-practice status
+top -bcn1 w512
+ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head
 ```
 
-The container whose `CPU %` is highest is the culprit. Inside, you'll see
-`stress-ng` processes running the `matrixprod` workload.
+The recorded service process running `stress-ng` is the culprit. The service
+name is only an identity for the lab workload; the host signal is ordinary CPU
+pressure from a real process.
+
+## TSA paragraph
+
+This is Executing-dominant: the busy threads are spending their time on CPU.
+If you switch from USE to thread-state analysis, the dominant state should
+agree with the CPU utilization signal rather than point to sleep, I/O wait, or
+quota throttling.
 
 ## Why this is a USE problem
 

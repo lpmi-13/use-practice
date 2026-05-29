@@ -1,107 +1,160 @@
 # use-practice
 
 Hands-on practice scenarios for Brendan Gregg's
-[**USE method**](https://www.brendangregg.com/usemethod.html). Each scenario
-spins up a small Docker Compose stack where one of several services is
-randomly chosen to misbehave on a single resource. Your job is to find the
-culprit by checking **Utilization**, **Saturation**, and **Errors** for each
-resource type.
+[USE method](https://www.brendangregg.com/usemethod.html). Each run starts a
+randomized host-level workload on a Linux VM. Your job is to correlate what
+the investigation tools report with the real system state by checking
+utilization, saturation, and errors.
 
-## Resources covered
+## Intended Environment
 
-| Scenario  | Workload tool          | Randomised inputs                                       |
-|-----------|------------------------|---------------------------------------------------------|
-| `cpu`     | `stress-ng`            | culprit service, worker count (1-4)                     |
-| `memory`  | `stress-ng`            | culprit service, resident size (300-800 MB)             |
-| `disk`    | `fio`                  | culprit service, block size, iodepth, rw pattern        |
-| `network` | `iperf3`               | culprit service, sink port, bandwidth, parallel flows   |
-| `hotpath` | Python HTTP + `py-spy` | culprit service, hot endpoint, loop size, request rate  |
+This project is intended to run inside an ephemeral training VM, specifically
+iximiuz Labs. The scenarios deliberately create CPU, memory, disk, network, or
+application-level pressure, and can make the machine slow, noisy, or unstable
+while they are running.
 
-The `hotpath` scenario builds on `cpu`: USE method tells you *which container*
-is hot, then you use `py-spy` to find *which function* in that container is
-the offending nested for-loop.
+It is possible to run the scenarios on your own Linux system, but it is not
+advised. Use a disposable VM where losing local state or temporarily degrading
+the machine is acceptable.
 
-The "culprit" is one of five services with realistic names (`api`, `worker`,
-`cache`, `queue`, `auth`); the others sit idle. Every run picks a fresh
-combination so it isn't the same problem twice.
+## Scenarios
+
+| Scenario | Workload | Primary signal |
+|---|---|---|
+| `cpu` | `stress-ng --cpu` | Host CPU utilization and run queue |
+| `memory` | `stress-ng --vm` | Resident memory, PSI, swap/OOM pressure |
+| `disk` | `fio --direct=1` | Device utilization, queue depth, await |
+| `network` | `iperf3` | Interface throughput, TCP saturation, drops |
+| `hotpath` | Python HTTP service | CPU-hot process, then profiler drill-down |
+
+Each run chooses a randomized service-like identity and a fresh run ID. Blind
+runs intentionally avoid naming the resource type, so the exercise is solved
+by following the system signals rather than by pattern-matching names.
 
 ## Requirements
 
-- Docker with the Compose v2 plugin (`docker compose ...`)
-- Linux host with `top`, `vmstat`, `iostat`, `sar`, `ss`, `free` (the `sysstat`
-  and `iproute2` packages cover most of these)
+- Ephemeral Linux VM, preferably iximiuz Labs.
+- Linux host tools such as `top`, `vmstat`, `iostat`, `sar`, `ss`, and `free`.
+- Workload tools used by scenarios, such as `stress-ng`, `fio`, `iperf3`,
+  Python, and any profiler used by the hotpath scenario.
 
-## Quick start
+The iximiuz rootfs build installs these tools for the learner. Local manual
+runs need them installed on the host.
+
+## Quick Start
 
 ```bash
-# Pick one at random; the resource type is hidden until you call ./reveal.sh
+# Pick one at random; the resource type is hidden until reveal.
 ./run.sh
 
-# Or target a specific resource (gives you a heads-up + USE-method hints)
+# Or target a specific resource.
 ./run.sh cpu
 ./run.sh memory
 ./run.sh disk
 ./run.sh network
 ./run.sh hotpath
 
-# Diagnose using your host tools (top, iostat -xz 1, sar -n DEV 1, ...)
-
-./reveal.sh        # see which service + parameters were actually used
-./stop-all.sh      # tear everything down
+./reveal.sh
+./stop-all.sh
 ```
 
-## Workflow
+The same commands are available through the dispatcher:
 
-1. `./run.sh` (random) or `./run.sh <resource>`.
-2. Look at the four resource families one by one:
-   - **CPU** &mdash; `top`, `mpstat -P ALL 1`, `vmstat 1` (run-queue `r`)
-   - **Memory** &mdash; `free -m`, `vmstat 1` (`si`/`so`), `/proc/pressure/memory`
-   - **Disk** &mdash; `iostat -xz 1` (`%util`, `aqu-sz`, `await`)
-   - **Network** &mdash; `sar -n DEV 1`, `ss -s`, `ip -s link`
-3. When you find a saturated resource, drill into per-container metrics:
-   ```bash
-   docker stats --no-stream
-   docker exec <name> top -bn1
-   ```
-4. `./reveal.sh` to check your answer.
-5. `./stop-all.sh` when finished.
+```bash
+./use-practice run [scenario]
+./use-practice reveal
+./use-practice stop
+./use-practice list
+./use-practice status
+```
 
-Each scenario directory has its own `SOLUTION.md` with the USE-method
-walk-through and pointers on what the fix would look like in production.
+## Investigation Flow
+
+1. Start a blind or named scenario.
+2. Check the host-level USE signals, either directly or through
+   `/home/adam/projects/use-tool`:
+   - CPU: `top`, `mpstat -P ALL 1`, `vmstat 1`
+   - Memory: `free -m`, `vmstat 1`, `cat /proc/pressure/memory`
+   - Disk: `iostat -xz 1`, `pidstat -d 1`
+   - Network: `sar -n DEV 1`, `ss -s`, `ip -s link`
+3. Pivot from the resource signal to the responsible process or service-like
+   workload using normal host tools such as `top`, `ps`, `pidstat`, `iotop`,
+   `ss`, or the relevant profiler.
+4. Use `./use-practice status` if you need the active run ID without revealing
+   the resource type.
+5. Use `./reveal.sh` to see the answer and the scenario's `SOLUTION.md` for
+   the walkthrough.
+6. Use `./stop-all.sh` when finished.
+
+## iximiuz Deployment
+
+The iximiuz path follows the same rootfs-image pattern as the companion labs:
+the repo, `use-tool`, workload packages, and bootstrap service are baked into a
+custom root filesystem image, then `playground/iximiuz/manifest.yaml` points the
+playground at that image.
+
+Build and optionally push the rootfs image:
+
+```bash
+docker login ghcr.io
+
+# Uses ../use-tool/use-tool by default. Set USE_TOOL_BIN if needed.
+IMAGE_TAG=v1 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
+```
+
+This creates:
+
+```text
+ghcr.io/lpmi-13/use-practice-rootfs:${IMAGE_TAG}
+```
+
+The build script updates `playground/iximiuz/manifest.yaml` after a successful
+build. Verify the published image reference before creating or updating the
+playground:
+
+```bash
+grep -n "source: oci://" playground/iximiuz/manifest.yaml
+```
+
+Then publish the custom playground:
+
+```bash
+labctl auth login
+
+# First publish
+labctl playground create use-practice-5e9d1d9a \
+  --base flexbox \
+  --file playground/iximiuz/manifest.yaml
+
+# Later updates
+labctl playground update use-practice-5e9d1d9a \
+  --file playground/iximiuz/manifest.yaml \
+  --force
+```
+
+The playground opens directly into `~/use-practice` as the `laborant` user.
+Use `./run.sh` to start a random scenario and `use-tool practice system` to
+investigate it.
 
 ## Layout
 
-```
+```text
 .
-├── run.sh              # top-level launcher (random by default)
-├── reveal.sh           # print active scenario's answer
-├── stop-all.sh         # stop everything
-├── tools/Dockerfile    # shared image (stress-ng, fio, iperf3, sysstat, ...)
-└── scenarios/
-    ├── cpu/
-    ├── memory/
-    ├── disk/
-    ├── network/
-    └── hotpath/          # Python HTTP services + py-spy drill-down
-        ├── Dockerfile    # python:3.11-slim + py-spy (image is local to this scenario)
-        ├── app/          # server.py, loadgen.py
-        ├── docker-compose.yml
-        ├── start.sh        # randomises parameters, brings stack up
-        ├── stop.sh
-        ├── reveal.sh
-        └── SOLUTION.md
+|-- use-practice          # dispatcher
+|-- run.sh                # compatibility wrapper for use-practice run
+|-- reveal.sh             # compatibility wrapper for use-practice reveal
+|-- stop-all.sh           # compatibility wrapper for use-practice stop
+|-- playground/
+|   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
+|-- scripts/
+|   `-- lib.sh            # shared host-process runtime helpers
+`-- scenarios/
+    |-- cpu/
+    |-- memory/
+    |-- disk/
+    |-- network/
+    `-- hotpath/
 ```
 
-## Notes
-
-- Host-level tools (`iostat`, `sar`, `vmstat`) see aggregate kernel counters,
-  which is correct &mdash; the USE method targets resources, not processes.
-  Drill into per-container metrics only after you've identified the resource.
-- The disk scenario uses `--direct=1` so the page cache doesn't mask the load.
-  Its `fio` job rewrites one fixed 256 MiB file in a Docker volume; long runs
-  increase I/O counters, not disk allocation, and `scenarios/disk/stop.sh`
-  removes the volume.
-- The network scenario shares the default Compose bridge; `sar -n DEV 1`
-  on the host will show the bridge/veth interfaces.
-- The `.env` and `.answer` files inside each scenario directory are
-  gitignored. Don't peek at them &mdash; that's what `reveal.sh` is for.
+`.env`, `.answer`, and runtime state files inside scenario directories are
+generated at runtime and ignored by git.

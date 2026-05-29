@@ -1,3 +1,17 @@
 scenarios/*/.env
 scenarios/*/.answer
+scenarios/*/.run-id
+scenarios/*/.pids
+scenarios/*/.processes
+scenarios/*/.netns
+scenarios/*/.links
+scenarios/*/.logs/
+scenarios/*/.runtime/
+scenarios/*/.plan.sh
+scenarios/*/.rendered.yaml
+scenarios/*/.rendered-body.yaml
+scenarios/*/.rendered-role.yaml
 .active-scenario
+.use-practice.local
+.tmp/
+__pycache__/

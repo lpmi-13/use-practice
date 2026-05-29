@@ -3,10 +3,21 @@ import os
 import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ROLE = socket.gethostname()
-CULPRIT = os.environ.get("CULPRIT", "")
-HOT_ENDPOINT = os.environ.get("HOT_ENDPOINT", "")
-HOT_SIZE = int(os.environ.get("HOT_SIZE", "600"))
+CONFIG_DIR = "/var/run/use-practice"
+
+
+def read_config(name, default=""):
+    try:
+        with open(f"{CONFIG_DIR}/{name}", encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+ROLE = os.environ.get("SERVICE_NAME") or os.environ.get("ROLE") or socket.gethostname()
+CULPRIT = os.environ.get("CULPRIT") or read_config("culprit")
+HOT_ENDPOINT = os.environ.get("HOT_ENDPOINT") or read_config("hot_endpoint")
+HOT_SIZE = int(os.environ.get("HOT_SIZE") or read_config("hot_size", "600"))
 IS_CULPRIT = ROLE == CULPRIT
 
 
@@ -85,5 +96,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"role={ROLE} culprit={IS_CULPRIT} hot_endpoint={HOT_ENDPOINT!r} hot_size={HOT_SIZE}", flush=True)
-    ThreadingHTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
+    port = int(os.environ.get("PORT", "8000"))
+    print(f"service={ROLE} listening port={port}", flush=True)
+    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()

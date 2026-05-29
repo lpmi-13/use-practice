@@ -1,10 +1,10 @@
 # Disk Scenario
 
 ## Symptom
-One service is pounding the shared `scratch` volume with `fio`. Read/write
-latency on whatever underlying block device backs Docker rises. The workload
-uses one fixed-size 256 MiB file, so running it longer increases block I/O
-counters but does not keep allocating more disk.
+One service-like host process is pounding a bounded local file with `fio`.
+Read/write latency on whatever block device backs the working directory rises.
+The workload uses one fixed-size 256 MiB file, so running it longer increases
+block I/O counters but does not keep allocating more disk.
 
 ## USE method walk-through
 
@@ -12,21 +12,28 @@ counters but does not keep allocating more disk.
 |--------------|-----------------------------------|---------------------------------------------------|
 | Utilization  | `iostat -xz 1`                    | `%util` close to 100% on the backing device       |
 | Saturation   | `iostat -xz 1`                    | `aqu-sz` > 1, `r_await`/`w_await` climbing        |
-| Errors       | `dmesg \| grep -i 'i/o error'`    | Usually none in containers; would matter on bare metal |
+| Errors       | `dmesg \| grep -i 'i/o error'`    | Usually none in this lab; would matter on bare metal |
 
-## Pinning it to a container
+## Pinning it to a host process
 
 ```bash
-docker stats --no-stream --format 'table {{.Name}}\t{{.BlockIO}}'
-docker exec <name> cat /proc/1/io
+./use-practice status
+pidstat -d 1
+iotop -bn1
+cat /proc/<pid>/io
 ```
 
-The container with runaway `BlockIO` is the culprit. Inside, `pidstat -d 1` or
-`cat /proc/<pid>/io` will show fio doing the I/O.
+The recorded service process running `fio` is the culprit. `pidstat -d 1`,
+`iotop`, or `cat /proc/<pid>/io` will show fio doing the I/O.
 
-The scratch data lives in the Compose-managed Docker volume
-`use-practice-disk_scratch`. `./stop.sh` runs `docker compose down --volumes`,
-which removes that volume and the fixed workload file.
+The scratch data lives under the scenario's `.runtime/` directory and
+disappears when the scenario is stopped.
+
+## TSA paragraph
+
+This is Sleeping-dominant on disk wait: the culprit's useful work is blocked
+behind storage latency. USE finds the saturated block device; TSA explains why
+the workload is not making progress even when it is not burning CPU.
 
 ## Why this is a USE problem
 

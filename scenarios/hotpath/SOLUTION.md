@@ -1,11 +1,9 @@
 # Hotpath Scenario
 
 ## Symptom
-Five identical Python HTTP services sit behind a `loadgen` container that
-hits each service evenly across `/search`, `/report`, `/aggregate`, `/export`.
-One service has a nested for-loop inlined into exactly one of those handlers,
-so its CPU burns far hotter than the others &mdash; even though every service
-sees the same request rate.
+A Python HTTP service is driven by a local load generator that hits `/search`,
+`/report`, `/aggregate`, and `/export`. One handler has a nested for-loop, so
+the service burns CPU even though the request mix looks ordinary.
 
 This is the layer past the basic CPU scenario: USE method tells you the
 *resource* is saturated, but you still need a *profiler* to find the
@@ -15,53 +13,57 @@ This is the layer past the basic CPU scenario: USE method tells you the
 
 | Dimension    | Tool                        | What you should see                              |
 |--------------|-----------------------------|--------------------------------------------------|
-| Utilization  | `top`, `docker stats`       | One container near 100% CPU, others light        |
+| Utilization  | `top`, process checks       | The Python service process near 100% CPU         |
 | Saturation   | `vmstat 1`                  | `r` (run-queue) creeping up on a busy host       |
 | Errors       | `dmesg`                     | None                                             |
 
 ## Drilling into the function
 
-Once you've identified the hot container, attach `py-spy`:
+Once you've identified the hot process, attach `py-spy`:
 
 ```bash
-NAME=<hot-container>
-PID=$(docker exec "$NAME" pgrep -f server.py)
-docker exec "$NAME" py-spy top --pid "$PID"
+./use-practice status
+py-spy top --pid <service-pid>
 ```
 
 `py-spy top` will show one handler (`handle_search`, `handle_report`,
 `handle_aggregate`, or `handle_export`) sitting at ~100% Own time. That
-function name *is* the URL route &mdash; that's how you know which endpoint
-is the bug.
+function name is the URL route, which is how you know which endpoint is the
+bug.
 
 For a one-shot snapshot of all live stacks:
 
 ```bash
-docker exec "$NAME" py-spy dump --pid "$PID"
+py-spy dump --pid <service-pid>
 ```
 
 For a flame graph over a 30-second window:
 
 ```bash
-docker exec "$NAME" py-spy record --pid "$PID" --output /tmp/flame.svg --duration 30
-docker cp "$NAME":/tmp/flame.svg .
+py-spy record --pid <service-pid> --output flame.svg --duration 30
 ```
 
 ## Why this is the right next step after the CPU scenario
 
-The pure-`stress-ng` CPU scenario stops at "which container is hot". Real
-production bugs continue: *which function inside that container?* The USE
-method is deliberately resource-first &mdash; it tells you where to point
-the profiler, not what the profiler will show. This scenario walks both
-halves of that workflow.
+The pure-`stress-ng` CPU scenario stops at "which process is hot". Real
+production bugs continue: *which function inside that process?* The USE
+method is deliberately resource-first &mdash; it tells you where to point the
+profiler, not what the profiler will show. This scenario walks both halves of
+that workflow.
 
 Real fixes from this point look like: vectorise the inner loop, cache
 intermediate results, push the work to a background job, or short-circuit
 the request when inputs are large.
 
+## TSA paragraph
+
+This is Executing-dominant like the plain CPU scenario, but the useful next
+step is a function-level profiler. TSA and USE both point at CPU; `py-spy`
+answers which handler owns the time.
+
 ## Notes
 
-- `py-spy` needs `SYS_PTRACE`; the compose file grants it.
-- For non-Python hot paths you'd use `perf top -p <pid>` from the host
-  (which sees the container's threads via `/proc`). That needs perf
-  installed on the host kernel.
+- `py-spy` may need elevated ptrace permissions depending on the VM's kernel
+  settings.
+- For non-Python hot paths you'd use `perf top -p <pid>`. That needs perf
+  installed for the host kernel.

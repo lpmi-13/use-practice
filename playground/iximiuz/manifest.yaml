@@ -1,0 +1,72 @@
+kind: playground
+name: use-practice-5e9d1d9a
+base: flexbox
+title: USE Practice
+description: Practice Linux USE-method investigations against randomized host-level scenarios.
+categories:
+  - linux
+  - sre
+  - observability
+playground:
+  networks:
+    - name: local
+      subnet: 172.16.0.0/24
+  machines:
+    - name: lab-01
+      users:
+        - name: root
+        - name: laborant
+          default: true
+          welcome: |
+            This VM is preloaded for USE-method investigation practice.
+
+            Start a random scenario:
+              cd ~/use-practice
+              ./run.sh
+
+            Investigate with the companion CLI:
+              use-tool practice system
+
+            Useful commands:
+              ./use-practice status
+              ./use-practice reveal
+              ./use-practice stop
+
+            The scenarios intentionally create CPU, memory, disk, network, or
+            application pressure. This VM is disposable; do not run these
+            workloads on a personal machine.
+      drives:
+        - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v1
+          mount: /
+          size: 30GiB
+      network:
+        interfaces:
+          - address: 172.16.0.2/24
+            network: local
+      resources:
+        cpuCount: 4
+        ramSize: 8GiB
+  tabs:
+    - id: terminal-lab-01
+      kind: terminal
+      name: lab-01
+      machine: lab-01
+  initTasks:
+    init_lab_01_1:
+      name: init_lab_01_1
+      machine: lab-01
+      init: true
+      user: root
+      timeout_seconds: 300
+      run: |-
+        #!/bin/bash
+        set -euo pipefail
+
+        /opt/use-practice/scripts/wait-lab-ready.sh
+  accessControl:
+    canList:
+      - owner
+    canRead:
+      - owner
+    canStart:
+      - owner
