@@ -85,30 +85,51 @@ impl Rng {
 
 // --- baseline (decoy) -------------------------------------------------------
 
-/// A low-activity service: hold a small resident set, tick the CPU well under
-/// 1%, and do a little buffered disk I/O now and then. Never dominant.
+/// A low-activity service that touches all four resources at a tiny, jittered
+/// rate: a held resident set (memory), a sub-1% CPU tick, occasional small
+/// buffered disk I/O, and occasional tiny UDP traffic. Each decoy seeds its own
+/// rhythm from its PID so the fleet doesn't blip in lockstep, like a real host.
 fn run_baseline(m: &HashMap<String, String>) {
     let base_mb = get_int(m, "base_mb", 16).max(1) as usize;
     let scratch = get_str(m, "scratch", "");
+    let blip = format!(
+        "{}:{}",
+        get_str(m, "blip_host", "127.0.0.1"),
+        get_str(m, "blip_port", "9")
+    );
 
     // Held resident set.
     let mut buf = vec![1u8; base_mb * 1024 * 1024];
 
+    let mut rng = Rng(0xDEAD_BEEF_CAFE_F00D ^ std::process::id() as u64);
     let mut x: u64 = 1;
-    let mut tick: u64 = 0;
     let blob = vec![0u8; 8192];
+
+    // Pre-connected UDP socket for the tiny network blips.
+    let udp = std::net::UdpSocket::bind("0.0.0.0:0").ok();
+    if let Some(s) = &udp {
+        let _ = s.connect(&blip);
+    }
+
+    // Cadences measured in ~200 ms ticks, randomized per service.
+    let mut tick: u64 = 0;
+    let mut disk_due = 10 + rng.next() % 20; // ~2-6 s
+    let mut net_due = 7 + rng.next() % 15; // ~1.5-4.5 s
+
     loop {
-        // Sub-1% CPU tick.
-        for _ in 0..200_000 {
+        // Sub-1% CPU tick, slightly varied so it isn't a flat line.
+        let n = 120_000 + rng.next() % 160_000;
+        for _ in 0..n {
             x ^= x << 13;
             x ^= x >> 7;
             x ^= x << 17;
         }
         buf[0] = x as u8; // keep the buffer (and compiler) honest
 
-        // Tiny buffered disk blip roughly every ~3s (15 * 200ms).
         tick += 1;
-        if tick % 15 == 0 && !scratch.is_empty() {
+
+        // Tiny buffered disk blip.
+        if tick >= disk_due && !scratch.is_empty() {
             if let Ok(mut f) = OpenOptions::new().create(true).write(true).open(&scratch) {
                 let _ = f.write_all(&blob);
                 let _ = f.sync_all();
@@ -117,9 +138,18 @@ fn run_baseline(m: &HashMap<String, String>) {
                 let mut sink = [0u8; 8192];
                 let _ = f.read(&mut sink);
             }
+            disk_due = tick + 10 + rng.next() % 20;
         }
 
-        std::thread::sleep(Duration::from_millis(200));
+        // Tiny network blip.
+        if tick >= net_due {
+            if let Some(s) = &udp {
+                let _ = s.send(&[0u8; 64]);
+            }
+            net_due = tick + 7 + rng.next() % 15;
+        }
+
+        std::thread::sleep(Duration::from_millis(150 + rng.next() % 150));
     }
 }
 
