@@ -19,9 +19,11 @@ top -bcn1 w512
 ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head
 ```
 
-The recorded service process running `stress-ng` is the culprit. The service
-name is only an identity for the lab workload; the host signal is ordinary CPU
-pressure from a real process.
+Several look-alike services are running; sort by `%CPU` to pick out the one
+that dominates. The rest are low-activity decoys (sub-1% CPU) — they are
+byte-identical processes, so you cannot tell the culprit apart by name or
+binary, only by its signal. The service name is just an identity for the lab
+workload; the host signal is ordinary CPU pressure from a real process.
 
 ## TSA paragraph
 

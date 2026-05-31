@@ -12,9 +12,16 @@ if id laborant >/dev/null 2>&1; then
   chown -h laborant:laborant /home/laborant/use-practice
 fi
 
-for cmd in fio iperf3 iostat mpstat pidstat py-spy sar stress-ng use-practice use-tool; do
+for cmd in iostat mpstat pidstat sar use-practice use-tool; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     echo "missing expected tool: ${cmd}" >&2
+    exit 1
+  }
+done
+
+for workload in uworker updisk; do
+  [ -x "/opt/use-practice/bin/${workload}" ] || {
+    echo "missing workload binary: ${workload}" >&2
     exit 1
   }
 done

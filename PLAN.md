@@ -77,15 +77,28 @@ cgroup limits, pod attribution, and orchestration-specific debugging.
 
 The first host-only catalog should stay small:
 
-| Name | Primary signal | Workload |
+| Name | Primary signal | Culprit profile |
 |---|---|---|
-| `cpu` | CPU utilization high; run queue pressure | `stress-ng --cpu ...` |
-| `memory` | RSS high; memory PSI or swap pressure | `stress-ng --vm ...` |
-| `disk` | device `%util`, `await`, `aqu-sz`, I/O PSI | `fio --direct=1 ...` |
-| `network` | interface throughput, TCP saturation, drops | `iperf3` or a veth/netns path |
-| `hotpath` | one local service process hot on CPU | Python HTTP service with a nested loop |
+| `cpu` | CPU utilization high; run queue pressure | busy compute worker |
+| `memory` | RSS high; memory PSI or swap pressure | large resident set |
+| `disk` | device `%util`, `await`, `aqu-sz`, I/O PSI | io_uring direct random I/O |
+| `network` | interface throughput, TCP saturation, drops | socket source/sink over a veth/netns path |
 
-Each run should choose a plausible service-like identity (`payments-api`,
+Each scenario starts a fleet of 5–10 service-like processes. One runs the
+culprit profile above; the rest run a low-activity "baseline" (small resident
+set, sub-1% CPU, occasional tiny disk/network blips) so the culprit must be
+found by signal magnitude, not by being the only active process.
+
+The fleet is two generic workload binaries — `uworker` (Go: cpu/memory/network
++ baseline) and `updisk` (Rust + io_uring: disk + baseline) — rather than a
+recognizable load-testing tool. Behavior is chosen by a `mode=` line in a config
+file. Within a scenario every service runs the *same* binary, staged to a
+per-run, service-named path and launched with no arguments and its config in an
+adjacent file it unlinks on start, so `ps`, `top`, `/proc/<pid>/cmdline`, and
+`/proc/<pid>/exe` reveal only the service identity and the culprit is
+byte-identical to the decoys.
+
+Each run should choose plausible service-like identities (`payments-api`,
 `reports-worker`, `catalog-indexer`, etc.) and write local state files that
 `reveal` can use. Names should not reveal the resource type.
 
@@ -123,13 +136,6 @@ For network scenarios, loopback-only traffic is usually too artificial because
 many network investigation flows filter `lo`. Prefer a simple veth pair or
 network namespace when the lab environment permits it; otherwise document the
 loopback limitation clearly.
-
-For hotpath scenarios, start the local service and load generator as host
-processes. The reveal should explain both levels:
-
-1. Host USE signals pointed to CPU.
-2. Process attribution found the service.
-3. Profiling found the hot function.
 
 ## Out of Scope
 

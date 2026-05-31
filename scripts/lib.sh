@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 USE_PRACTICE_ROOT="${USE_PRACTICE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+BIN_DIR="${BIN_DIR:-$USE_PRACTICE_ROOT/bin}"
 
-SCENARIOS=(cpu memory disk network hotpath)
+SCENARIOS=(cpu memory disk network)
 SERVICE_POOL=(
   api worker cache queue auth billing search checkout ingest gateway
   notifications reports scheduler catalog profiles payments fraud session
@@ -20,16 +21,79 @@ need_cmd() {
   command -v "$cmd" >/dev/null 2>&1 || die "$cmd is required for this scenario."
 }
 
-python_cmd() {
-  if command -v python3 >/dev/null 2>&1; then
-    echo python3
-    return 0
-  fi
-  if command -v python >/dev/null 2>&1; then
-    echo python
-    return 0
-  fi
-  die "python3 is required for this scenario."
+require_workload_bin() {
+  local bin="$1"
+  [ -x "$BIN_DIR/$bin" ] || \
+    die "workload binary '$bin' not found in $BIN_DIR (run scripts/build.sh)."
+}
+
+# stage_workload <binary> <service>
+#
+# Copies the workload binary to a per-run, service-named path and writes its
+# config (read from stdin) alongside it. The running process then shows up only
+# as the service name in ps/top with no arguments, and the binary reads its
+# parameters from the adjacent <service>.cfg file (which it unlinks on start).
+# Echoes the staged binary path for the caller to launch.
+stage_workload() {
+  local binary="$1"
+  local service="$2"
+  local dir="$RUNTIME_DIR/bin"
+  mkdir -p "$dir"
+  cp "$BIN_DIR/$binary" "$dir/$service"
+  chmod 755 "$dir/$service"
+  cat > "$dir/$service.cfg"
+  echo "$dir/$service"
+}
+
+# launch_workload <binary> <service> <summary>   (config read from stdin)
+#
+# Stages the binary for the service and starts it under its masked name.
+launch_workload() {
+  local binary="$1"
+  local service="$2"
+  local summary="$3"
+  local bp
+  bp="$(stage_workload "$binary" "$service")"
+  start_service "$service" "$summary" "exec -a \"\$0\" \"$bp\""
+}
+
+# launch_baseline_fleet <binary> [active_service ...]
+#
+# Starts every service in SERVICES that is not listed as active as a low-load
+# "baseline" decoy of the same binary. The decoys are byte-identical to the
+# culprit, so they can only be told apart by their live USE signal.
+launch_baseline_fleet() {
+  local binary="$1"
+  shift
+  local svc active skip base_lo base_hi span base_mb total_mb
+
+  # Size each decoy's resident set relative to the host so the fleet stays
+  # visible on big VMs and harmless on small ones (~1% of RAM each, clamped).
+  total_mb="$(awk '/MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)"
+  total_mb="${total_mb:-2048}"
+  base_lo=8
+  [ "$total_mb" -lt 1536 ] && base_lo=4
+  base_hi=$((total_mb / 100))
+  [ "$base_hi" -gt 64 ] && base_hi=64
+  [ "$base_hi" -le "$base_lo" ] && base_hi=$((base_lo + 4))
+  span=$((base_hi - base_lo + 1))
+
+  for svc in "${SERVICES[@]}"; do
+    skip=0
+    for active in "$@"; do
+      if [ "$active" = "$svc" ]; then
+        skip=1
+        break
+      fi
+    done
+    [ "$skip" -eq 1 ] && continue
+    base_mb=$((base_lo + RANDOM % span))
+    launch_workload "$binary" "$svc" "service $svc (baseline)" <<EOF
+mode=baseline
+base_mb=$base_mb
+scratch=$RUNTIME_DIR/$svc.scratch
+EOF
+  done
 }
 
 is_scenario() {

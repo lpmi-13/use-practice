@@ -82,6 +82,7 @@ cp "${repo_root}/playground/iximiuz/Dockerfile" "${build_context}/Dockerfile"
 cp -R "${repo_root}/playground/iximiuz/image" "${build_context}/playground/iximiuz/"
 
 for item in \
+  loadgen \
   reveal.sh \
   run.sh \
   scenarios \
@@ -93,7 +94,7 @@ do
 done
 
 find "${build_context}/use-practice" \
-  \( -name .runtime -o -name .logs -o -name __pycache__ \) \
+  \( -name .runtime -o -name .logs -o -name __pycache__ -o -name target -o -name bin \) \
   -prune -exec rm -rf {} +
 find "${build_context}/use-practice" \
   \( -name .env -o -name .answer -o -name .run-id -o -name .pids -o -name .processes -o -name .netns -o -name .links \) \

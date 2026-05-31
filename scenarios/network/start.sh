@@ -5,9 +5,9 @@ cd "$(dirname "$0")"
 # shellcheck source=../../scripts/lib.sh
 source ../../scripts/lib.sh
 
-need_cmd iperf3
+require_workload_bin uworker
 
-start_run 2
+start_run "$((5 + RANDOM % 6))"
 CULPRIT="${SERVICES[0]}"
 TARGET_SERVICE="${SERVICES[1]}"
 SINK_PORT=$((5200 + RANDOM % 100))
@@ -16,26 +16,33 @@ PARALLEL=$((1 + RANDOM % 4))
 PROTO_OPTIONS=(tcp udp)
 NETWORK_PROTO="${PROTO_OPTIONS[$((RANDOM % ${#PROTO_OPTIONS[@]}))]}"
 if [ "$NETWORK_PROTO" = "udp" ]; then
-  IPERF_MODE="-u"
   NETWORK_SIGNAL="UDP loss/jitter and interface drops under offered load"
 else
-  IPERF_MODE=""
   NETWORK_SIGNAL="TCP throughput, retransmits, and socket queue pressure"
 fi
+
+# Stage the sink (server). It may need to run inside a netns, so it is launched
+# directly rather than through launch_workload.
+SERVER_BIN="$(stage_workload uworker "$TARGET_SERVICE" <<EOF
+mode=netserver
+proto=$NETWORK_PROTO
+port=$SINK_PORT
+EOF
+)"
 
 if setup_veth_pair; then
   TARGET_HOST="$VETH_PEER_IP"
   NETWORK_PATH="$VETH_HOST on the host to $VETH_PEER in netns $NETNS"
   if [ "$(id -u)" = "0" ]; then
-    SERVER_SCRIPT="exec -a \"\$0\" ip netns exec \"$NETNS\" iperf3 -s -p \"$SINK_PORT\""
+    SERVER_SCRIPT="exec -a \"\$0\" ip netns exec \"$NETNS\" \"$SERVER_BIN\""
   else
-    SERVER_SCRIPT="exec -a \"\$0\" sudo -n ip netns exec \"$NETNS\" iperf3 -s -p \"$SINK_PORT\""
+    SERVER_SCRIPT="exec -a \"\$0\" sudo -n ip netns exec \"$NETNS\" \"$SERVER_BIN\""
   fi
   NETWORK_NOTE="Traffic should be visible on host interface $VETH_HOST."
 else
   TARGET_HOST="127.0.0.1"
   NETWORK_PATH="loopback fallback"
-  SERVER_SCRIPT="exec -a \"\$0\" iperf3 -s -p \"$SINK_PORT\""
+  SERVER_SCRIPT="exec -a \"\$0\" \"$SERVER_BIN\""
   NETWORK_NOTE="Traffic is on loopback because veth/netns setup was unavailable; include lo in interface checks."
 fi
 
@@ -49,6 +56,7 @@ BW_MBPS=$BW_MBPS
 PARALLEL=$PARALLEL
 NETWORK_PROTO=$NETWORK_PROTO
 NETWORK_PATH=$NETWORK_PATH
+SERVICES=${SERVICES[*]}
 EOF
 echo "$RUN_ID" > .run-id
 
@@ -59,31 +67,33 @@ Target:    $TARGET_SERVICE at $TARGET_HOST:$SINK_PORT
 Path:      $NETWORK_PATH
 Protocol:  $NETWORK_PROTO
 Bandwidth: ${BW_MBPS} Mbit/s offered
-Streams:   $PARALLEL parallel iperf3 flows
+Streams:   $PARALLEL parallel flows
 Signal:    $NETWORK_SIGNAL
+Fleet:     ${SERVICES[*]}
+Process:   in-tree network source '$CULPRIT' -> sink '$TARGET_SERVICE'
+           The other services are baseline decoys (tiny loopback chatter).
 Run ID:    $RUN_ID
 EOF
 
 start_service \
   "$TARGET_SERVICE" \
-  "iperf3 -s -p $SINK_PORT" \
+  "network sink on :$SINK_PORT ($NETWORK_PROTO)" \
   "$SERVER_SCRIPT"
 
 sleep 1
 
-CLIENT_SCRIPT=$(cat <<EOF
-while true; do
-  iperf3 $IPERF_MODE -c "$TARGET_HOST" -p "$SINK_PORT" -t 60 -b "${BW_MBPS}M" -P "$PARALLEL" >/dev/null 2>&1 || sleep 1
-done
+launch_workload uworker "$CULPRIT" "network source -> $TARGET_HOST:$SINK_PORT (${BW_MBPS}M x$PARALLEL)" <<EOF
+mode=netclient
+proto=$NETWORK_PROTO
+host=$TARGET_HOST
+port=$SINK_PORT
+mbps=$BW_MBPS
+parallel=$PARALLEL
 EOF
-)
 
-start_service \
-  "$CULPRIT" \
-  "iperf3 $NETWORK_PROTO client to $TARGET_HOST:$SINK_PORT" \
-  "$CLIENT_SCRIPT"
+launch_baseline_fleet uworker "$CULPRIT" "$TARGET_SERVICE"
 
-echo "Network scenario running. Service '$CULPRIT' is generating sustained traffic."
+echo "Network scenario running. ${#SERVICES[@]} services are up; one is generating sustained traffic."
 echo "$NETWORK_NOTE"
 echo
 echo "USE method starting points:"
@@ -91,8 +101,8 @@ echo "  Utilization: sar -n DEV 1   (rxkB/s, txkB/s vs link speed)"
 echo "  Saturation:  ss -s, ss -tin (retrans, cwnd)"
 echo "  Errors:      ip -s link, sar -n EDEV 1   (drops, errors)"
 echo
-echo "Host drill-down:"
+echo "Host drill-down (find the heavy talker):"
 echo "  ./use-practice status"
-echo "  ss -tnp | grep iperf3"
+echo "  ss -tnp"
 echo "  ip -s link"
 print_host_footer

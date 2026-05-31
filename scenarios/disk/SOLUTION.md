@@ -1,10 +1,10 @@
 # Disk Scenario
 
 ## Symptom
-One service-like host process is pounding a bounded local file with `fio`.
-Read/write latency on whatever block device backs the working directory rises.
-The workload uses one fixed-size 256 MiB file, so running it longer increases
-block I/O counters but does not keep allocating more disk.
+One service-like host process is pounding a bounded local file with direct,
+random block I/O. Read/write latency on whatever block device backs the working
+directory rises. The workload uses one fixed-size 256 MiB file, so running it
+longer increases block I/O counters but does not keep allocating more disk.
 
 ## USE method walk-through
 
@@ -23,8 +23,10 @@ iotop -bn1
 cat /proc/<pid>/io
 ```
 
-The recorded service process running `fio` is the culprit. `pidstat -d 1`,
-`iotop`, or `cat /proc/<pid>/io` will show fio doing the I/O.
+Several look-alike services are running, and the decoys each do a little
+occasional I/O, so don't just look for the one process touching the disk —
+look for the one doing the *most*. `pidstat -d 1`, `iotop`, or
+`cat /proc/<pid>/io` will show one process dominating reads/writes.
 
 The scratch data lives under the scenario's `.runtime/` directory and
 disappears when the scenario is stopped.

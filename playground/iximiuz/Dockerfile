@@ -1,4 +1,20 @@
 # syntax=docker/dockerfile:1
+
+# Build the generic Go workload (cpu/memory/network + baseline). Stdlib only,
+# so no network access is needed at build time.
+FROM golang:1.24-bookworm AS gobuild
+ENV GOPROXY=off GOFLAGS=-mod=mod
+WORKDIR /src
+COPY use-practice/loadgen/go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/uworker ./cmd/uworker
+
+# Build the Rust io_uring disk workload. Crates are fetched from crates.io at
+# build time and pinned by the committed Cargo.lock.
+FROM rust:1-bookworm AS rustbuild
+WORKDIR /src
+COPY use-practice/loadgen/rust/updisk ./
+RUN cargo build --release --locked && install -D target/release/updisk /out/updisk
+
 FROM ghcr.io/iximiuz/labs/rootfs:ubuntu-24-04
 
 USER root
@@ -9,6 +25,9 @@ COPY use-tool/use-tool /usr/local/bin/use-tool
 COPY playground/iximiuz/image/bootstrap-use-practice.sh /opt/iximiuz-labs/bootstrap-use-practice.sh
 COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system/use-practice-bootstrap.service
 
+COPY --from=gobuild /out/uworker /opt/use-practice/bin/uworker
+COPY --from=rustbuild /out/updisk /opt/use-practice/bin/updisk
+
 RUN <<'EOF'
 set -eu
 
@@ -17,22 +36,15 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   bash \
   ca-certificates \
   curl \
-  fio \
   git \
-  iperf3 \
   iproute2 \
   iotop \
   jq \
   procps \
   psmisc \
-  python3 \
-  python3-pip \
-  stress-ng \
   sudo \
   sysstat
 rm -rf /var/lib/apt/lists/*
-
-python3 -m pip install --break-system-packages --no-cache-dir py-spy
 
 chmod 755 /usr/local/bin/use-tool
 chmod 755 /opt/use-practice/use-practice \
@@ -41,6 +53,8 @@ chmod 755 /opt/use-practice/use-practice \
   /opt/use-practice/stop-all.sh \
   /opt/use-practice/scripts/wait-lab-ready.sh \
   /opt/iximiuz-labs/bootstrap-use-practice.sh
+chmod 755 /opt/use-practice/bin/uworker \
+  /opt/use-practice/bin/updisk
 find /opt/use-practice/scenarios -name '*.sh' -exec chmod 755 {} +
 
 if id laborant >/dev/null 2>&1; then
@@ -82,9 +96,16 @@ chmod 755 /usr/local/bin/use-practice \
   /usr/local/bin/use-practice-reveal \
   /usr/local/bin/use-practice-stop
 
-for cmd in bash curl fio iperf3 ip jq python3 py-spy stress-ng use-practice use-tool vmstat; do
+for cmd in bash curl ip jq use-practice use-tool vmstat; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     echo "missing expected tool: ${cmd}" >&2
+    exit 1
+  }
+done
+
+for workload in uworker updisk; do
+  [ -x "/opt/use-practice/bin/${workload}" ] || {
+    echo "missing workload binary: ${workload}" >&2
     exit 1
   }
 done

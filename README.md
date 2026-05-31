@@ -21,25 +21,43 @@ the machine is acceptable.
 
 | Scenario | Workload | Primary signal |
 |---|---|---|
-| `cpu` | `stress-ng --cpu` | Host CPU utilization and run queue |
-| `memory` | `stress-ng --vm` | Resident memory, PSI, swap/OOM pressure |
-| `disk` | `fio --direct=1` | Device utilization, queue depth, await |
-| `network` | `iperf3` | Interface throughput, TCP saturation, drops |
-| `hotpath` | Python HTTP service | CPU-hot process, then profiler drill-down |
+| `cpu` | busy compute worker | Host CPU utilization and run queue |
+| `memory` | large resident set | Resident memory, PSI, swap/OOM pressure |
+| `disk` | direct random block I/O | Device utilization, queue depth, await |
+| `network` | sustained socket traffic | Interface throughput, TCP saturation, drops |
 
-Each run chooses a randomized service-like identity and a fresh run ID. Blind
-runs intentionally avoid naming the resource type, so the exercise is solved
-by following the system signals rather than by pattern-matching names.
+Each scenario starts a fleet of 5–10 service-like processes. **One** of them
+runs the resource-specific load profile above; the rest run a low-activity
+"baseline" (a small resident set, sub-1% CPU, and occasional tiny disk/network
+blips) so the host looks like a real, lightly-loaded fleet. Your job is to find
+the culprit by its USE signal, not by spotting the only busy process.
+
+The workload is two generic binaries — `uworker` (Go: cpu/memory/network +
+baseline) and `updisk` (Rust + io_uring: disk + baseline) — rather than a
+recognizable load-testing tool. Within a scenario every service runs the *same*
+binary, copied to a per-run, service-named path and launched with no arguments;
+its parameters come from an adjacent config file it unlinks on startup. So
+`ps`, `top`, `/proc/<pid>/cmdline`, and `/proc/<pid>/exe` show only the service
+identity — there is no `stress-ng`/`fio`/`iperf3` command line to grep for, and
+the culprit is byte-identical to the decoys. Each run also chooses a fresh run
+ID, and blind runs avoid naming the resource type, so the exercise is solved by
+following the system signals rather than by pattern-matching names.
 
 ## Requirements
 
 - Ephemeral Linux VM, preferably iximiuz Labs.
 - Linux host tools such as `top`, `vmstat`, `iostat`, `sar`, `ss`, and `free`.
-- Workload tools used by scenarios, such as `stress-ng`, `fio`, `iperf3`,
-  Python, and any profiler used by the hotpath scenario.
+- The workload binaries (`uworker`, `updisk`), built into `./bin`. The disk
+  workload uses `io_uring` direct I/O, so the backing filesystem must support
+  `O_DIRECT` (it falls back to buffered I/O otherwise).
 
-The iximiuz rootfs build installs these tools for the learner. Local manual
-runs need them installed on the host.
+The iximiuz rootfs build compiles the workload binaries (Go + Rust) in a
+multi-stage Docker build and ships them in the image. For local manual runs,
+build them first with:
+
+```bash
+bash scripts/build.sh   # needs the Go and Rust toolchains
+```
 
 ## Quick Start
 
@@ -52,7 +70,6 @@ runs need them installed on the host.
 ./run.sh memory
 ./run.sh disk
 ./run.sh network
-./run.sh hotpath
 
 ./reveal.sh
 ./stop-all.sh
@@ -154,16 +171,20 @@ investigate it.
 |-- run.sh                # compatibility wrapper for use-practice run
 |-- reveal.sh             # compatibility wrapper for use-practice reveal
 |-- stop-all.sh           # compatibility wrapper for use-practice stop
+|-- bin/                  # compiled workload binaries (built, git-ignored)
+|-- loadgen/
+|   |-- go/               # uworker: cpu/memory/network + baseline (Go)
+|   `-- rust/updisk/      # updisk: io_uring disk + baseline (Rust)
 |-- playground/
 |   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
 |-- scripts/
+|   |-- build.sh          # builds the workload binaries into ./bin
 |   `-- lib.sh            # shared host-process runtime helpers
 `-- scenarios/
     |-- cpu/
     |-- memory/
     |-- disk/
-    |-- network/
-    `-- hotpath/
+    `-- network/
 ```
 
 `.env`, `.answer`, and runtime state files inside scenario directories are
