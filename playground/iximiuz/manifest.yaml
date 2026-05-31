@@ -65,8 +65,8 @@ playground:
         /opt/use-practice/scripts/wait-lab-ready.sh
   accessControl:
     canList:
-      - owner
+      - anyone
     canRead:
-      - owner
+      - anyone
     canStart:
-      - owner
+      - anyone
