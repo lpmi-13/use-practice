@@ -21,25 +21,35 @@ the machine is acceptable.
 
 | Scenario | Workload | Primary signal |
 |---|---|---|
-| `cpu` | `stress-ng --cpu` | Host CPU utilization and run queue |
-| `memory` | `stress-ng --vm` | Resident memory, PSI, swap/OOM pressure |
-| `disk` | `fio --direct=1` | Device utilization, queue depth, await |
-| `network` | `iperf3` | Interface throughput, TCP saturation, drops |
-| `hotpath` | Python HTTP service | CPU-hot process, then profiler drill-down |
+| `cpu` | busy compute worker | Host CPU utilization and run queue |
+| `memory` | large resident set | Resident memory, PSI, swap/OOM pressure |
+| `disk` | direct random block I/O | Device utilization, queue depth, await |
+| `network` | sustained socket traffic | Interface throughput, TCP saturation, drops |
 
-Each run chooses a randomized service-like identity and a fresh run ID. Blind
-runs intentionally avoid naming the resource type, so the exercise is solved
-by following the system signals rather than by pattern-matching names.
+Each scenario runs a small purpose-built workload binary rather than a
+recognizable load-testing tool. The binary is copied to a per-run, service-named
+path and launched with no arguments, so `ps`, `top`, and `/proc/<pid>/cmdline`
+show only the service identity — there is no `stress-ng`/`fio`/`iperf3` command
+line to grep for. Each run chooses a randomized service-like identity and a
+fresh run ID. Blind runs intentionally avoid naming the resource type, so the
+exercise is solved by following the system signals rather than by
+pattern-matching names.
 
 ## Requirements
 
 - Ephemeral Linux VM, preferably iximiuz Labs.
 - Linux host tools such as `top`, `vmstat`, `iostat`, `sar`, `ss`, and `free`.
-- Workload tools used by scenarios, such as `stress-ng`, `fio`, `iperf3`,
-  Python, and any profiler used by the hotpath scenario.
+- The workload binaries (`upcpu`, `upmem`, `updisk`, `upnet`), built into
+  `./bin`. The disk workload uses `io_uring` direct I/O, so the backing
+  filesystem must support `O_DIRECT` (it falls back to buffered I/O otherwise).
 
-The iximiuz rootfs build installs these tools for the learner. Local manual
-runs need them installed on the host.
+The iximiuz rootfs build compiles the workload binaries (Go + Rust) in a
+multi-stage Docker build and ships them in the image. For local manual runs,
+build them first with:
+
+```bash
+bash scripts/build.sh   # needs the Go and Rust toolchains
+```
 
 ## Quick Start
 
@@ -52,7 +62,6 @@ runs need them installed on the host.
 ./run.sh memory
 ./run.sh disk
 ./run.sh network
-./run.sh hotpath
 
 ./reveal.sh
 ./stop-all.sh
@@ -154,16 +163,20 @@ investigate it.
 |-- run.sh                # compatibility wrapper for use-practice run
 |-- reveal.sh             # compatibility wrapper for use-practice reveal
 |-- stop-all.sh           # compatibility wrapper for use-practice stop
+|-- bin/                  # compiled workload binaries (built, git-ignored)
+|-- loadgen/
+|   |-- go/               # upcpu, upmem, upnet (Go)
+|   `-- rust/updisk/      # updisk: io_uring direct-I/O worker (Rust)
 |-- playground/
 |   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
 |-- scripts/
+|   |-- build.sh          # builds the workload binaries into ./bin
 |   `-- lib.sh            # shared host-process runtime helpers
 `-- scenarios/
     |-- cpu/
     |-- memory/
     |-- disk/
-    |-- network/
-    `-- hotpath/
+    `-- network/
 ```
 
 `.env`, `.answer`, and runtime state files inside scenario directories are

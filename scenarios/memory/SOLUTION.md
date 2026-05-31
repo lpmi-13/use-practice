@@ -21,8 +21,8 @@ ps -eo pid,ppid,pgid,stat,pcpu,pmem,rss,args --sort=-rss | head
 ```
 
 The recorded service process with disproportionate resident memory is the
-culprit. `top` sorted by RES (`Shift+M`) or `ps --sort=-rss` will show
-`stress-ng-vm` holding the bytes.
+culprit. `top` sorted by RES (`Shift+M`) or `ps --sort=-rss` will show the
+service process holding the bytes.
 
 ## TSA paragraph
 

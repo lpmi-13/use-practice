@@ -19,7 +19,7 @@ top -bcn1 w512
 ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head
 ```
 
-The recorded service process running `stress-ng` is the culprit. The service
+The recorded service process burning the cores is the culprit. The service
 name is only an identity for the lab workload; the host signal is ordinary CPU
 pressure from a real process.
 

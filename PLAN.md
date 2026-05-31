@@ -79,11 +79,16 @@ The first host-only catalog should stay small:
 
 | Name | Primary signal | Workload |
 |---|---|---|
-| `cpu` | CPU utilization high; run queue pressure | `stress-ng --cpu ...` |
-| `memory` | RSS high; memory PSI or swap pressure | `stress-ng --vm ...` |
-| `disk` | device `%util`, `await`, `aqu-sz`, I/O PSI | `fio --direct=1 ...` |
-| `network` | interface throughput, TCP saturation, drops | `iperf3` or a veth/netns path |
-| `hotpath` | one local service process hot on CPU | Python HTTP service with a nested loop |
+| `cpu` | CPU utilization high; run queue pressure | `upcpu`: busy compute worker |
+| `memory` | RSS high; memory PSI or swap pressure | `upmem`: large resident set |
+| `disk` | device `%util`, `await`, `aqu-sz`, I/O PSI | `updisk`: io_uring direct random I/O |
+| `network` | interface throughput, TCP saturation, drops | `upnet`: socket source/sink over a veth/netns path |
+
+Each scenario runs a small purpose-built workload binary (Go for cpu/memory/
+network, Rust + io_uring for disk) rather than a recognizable load-testing tool.
+The binary is staged to a per-run, service-named path and launched with no
+arguments and its config in an adjacent file it unlinks on start, so `ps`,
+`top`, and `/proc/<pid>/cmdline` reveal only the service identity.
 
 Each run should choose a plausible service-like identity (`payments-api`,
 `reports-worker`, `catalog-indexer`, etc.) and write local state files that
@@ -123,13 +128,6 @@ For network scenarios, loopback-only traffic is usually too artificial because
 many network investigation flows filter `lo`. Prefer a simple veth pair or
 network namespace when the lab environment permits it; otherwise document the
 loopback limitation clearly.
-
-For hotpath scenarios, start the local service and load generator as host
-processes. The reveal should explain both levels:
-
-1. Host USE signals pointed to CPU.
-2. Process attribution found the service.
-3. Profiling found the hot function.
 
 ## Out of Scope
 

@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 # shellcheck source=../../scripts/lib.sh
 source ../../scripts/lib.sh
 
-need_cmd stress-ng
+require_workload_bin upmem
 
 start_run 1
 CULPRIT="$(pick_random_service)"
@@ -21,13 +21,11 @@ if [ "$MAX_MB" -lt "$MIN_MB" ]; then
 fi
 RANGE=$((MAX_MB - MIN_MB + 1))
 MEM_MB=$((MIN_MB + RANDOM % RANGE))
-VM_WORKERS=$((1 + RANDOM % 2))
 
 cat > .env <<EOF
 RUN_ID=$RUN_ID
 CULPRIT=$CULPRIT
 MEM_MB=$MEM_MB
-VM_WORKERS=$VM_WORKERS
 EOF
 echo "$RUN_ID" > .run-id
 
@@ -35,15 +33,20 @@ cat > .answer <<EOF
 Resource:  Memory
 Service:   $CULPRIT
 Resident:  ${MEM_MB} MB
-VMs:       $VM_WORKERS
-Process:   stress-ng --vm $VM_WORKERS --vm-bytes ${MEM_MB}m --vm-keep
+Process:   in-tree memory worker holding ${MEM_MB} MB resident, running as '$CULPRIT'
 Run ID:    $RUN_ID
 EOF
 
+BINPATH="$(stage_workload upmem "$CULPRIT" <<EOF
+mb=$MEM_MB
+touch_ms=1000
+EOF
+)"
+
 start_service \
   "$CULPRIT" \
-  "stress-ng --vm $VM_WORKERS --vm-bytes ${MEM_MB}m --vm-keep" \
-  "exec -a \"\$0\" stress-ng --vm \"$VM_WORKERS\" --vm-bytes \"${MEM_MB}m\" --vm-hang 0 --vm-keep"
+  "memory worker holding ${MEM_MB} MB" \
+  "exec -a \"\$0\" \"$BINPATH\""
 
 echo "Memory scenario running. Service '$CULPRIT' is holding a large resident set."
 echo

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 USE_PRACTICE_ROOT="${USE_PRACTICE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+BIN_DIR="${BIN_DIR:-$USE_PRACTICE_ROOT/bin}"
 
-SCENARIOS=(cpu memory disk network hotpath)
+SCENARIOS=(cpu memory disk network)
 SERVICE_POOL=(
   api worker cache queue auth billing search checkout ingest gateway
   notifications reports scheduler catalog profiles payments fraud session
@@ -20,16 +21,28 @@ need_cmd() {
   command -v "$cmd" >/dev/null 2>&1 || die "$cmd is required for this scenario."
 }
 
-python_cmd() {
-  if command -v python3 >/dev/null 2>&1; then
-    echo python3
-    return 0
-  fi
-  if command -v python >/dev/null 2>&1; then
-    echo python
-    return 0
-  fi
-  die "python3 is required for this scenario."
+require_workload_bin() {
+  local bin="$1"
+  [ -x "$BIN_DIR/$bin" ] || \
+    die "workload binary '$bin' not found in $BIN_DIR (run scripts/build.sh)."
+}
+
+# stage_workload <binary> <service>
+#
+# Copies the workload binary to a per-run, service-named path and writes its
+# config (read from stdin) alongside it. The running process then shows up only
+# as the service name in ps/top with no arguments, and the binary reads its
+# parameters from the adjacent <service>.cfg file (which it unlinks on start).
+# Echoes the staged binary path for the caller to launch.
+stage_workload() {
+  local binary="$1"
+  local service="$2"
+  local dir="$RUNTIME_DIR/bin"
+  mkdir -p "$dir"
+  cp "$BIN_DIR/$binary" "$dir/$service"
+  chmod 755 "$dir/$service"
+  cat > "$dir/$service.cfg"
+  echo "$dir/$service"
 }
 
 is_scenario() {
