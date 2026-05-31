@@ -11,11 +11,12 @@ RUN set -eu; mkdir -p /out; \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "/out/$cmd" "./cmd/$cmd"; \
   done
 
-# Build the Rust io_uring disk workload from vendored crates (offline).
+# Build the Rust io_uring disk workload. Crates are fetched from crates.io at
+# build time and pinned by the committed Cargo.lock.
 FROM rust:1-bookworm AS rustbuild
 WORKDIR /src
 COPY use-practice/loadgen/rust/updisk ./
-RUN cargo build --release --offline && install -D target/release/updisk /out/updisk
+RUN cargo build --release --locked && install -D target/release/updisk /out/updisk
 
 FROM ghcr.io/iximiuz/labs/rootfs:ubuntu-24-04
 

@@ -21,3 +21,4 @@ use-practice
 # compiled workload binaries (built by scripts/build.sh or the image build)
 bin/
 loadgen/rust/updisk/target/
+loadgen/rust/updisk/vendor/

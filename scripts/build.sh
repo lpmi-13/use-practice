@@ -18,7 +18,7 @@ echo "building Go workloads (upcpu, upmem, upnet)..."
 echo "building Rust disk workload (updisk)..."
 (
   cd "$root/loadgen/rust/updisk"
-  cargo build --release --offline 2>/dev/null || cargo build --release
+  cargo build --release
   cp "target/release/updisk" "$bin/updisk"
 )
 
