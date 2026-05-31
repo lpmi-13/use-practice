@@ -65,7 +65,19 @@ launch_workload() {
 launch_baseline_fleet() {
   local binary="$1"
   shift
-  local svc active skip
+  local svc active skip base_lo base_hi span base_mb total_mb
+
+  # Size each decoy's resident set relative to the host so the fleet stays
+  # visible on big VMs and harmless on small ones (~1% of RAM each, clamped).
+  total_mb="$(awk '/MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)"
+  total_mb="${total_mb:-2048}"
+  base_lo=8
+  [ "$total_mb" -lt 1536 ] && base_lo=4
+  base_hi=$((total_mb / 100))
+  [ "$base_hi" -gt 64 ] && base_hi=64
+  [ "$base_hi" -le "$base_lo" ] && base_hi=$((base_lo + 4))
+  span=$((base_hi - base_lo + 1))
+
   for svc in "${SERVICES[@]}"; do
     skip=0
     for active in "$@"; do
@@ -75,9 +87,10 @@ launch_baseline_fleet() {
       fi
     done
     [ "$skip" -eq 1 ] && continue
+    base_mb=$((base_lo + RANDOM % span))
     launch_workload "$binary" "$svc" "service $svc (baseline)" <<EOF
 mode=baseline
-base_mb=$((8 + RANDOM % 33))
+base_mb=$base_mb
 scratch=$RUNTIME_DIR/$svc.scratch
 EOF
   done
