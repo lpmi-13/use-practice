@@ -22,7 +22,8 @@ ss -tnp
 ip -s link
 ```
 
-The recorded client service with active connections to the sink is the
+Several look-alike services are running; the decoys emit only tiny loopback
+chatter, so the heavy talker with sustained connections to the sink is the
 culprit. TCP variants emphasize retransmits and queue pressure; UDP variants
 make loss/jitter and interface drops easier to see.
 

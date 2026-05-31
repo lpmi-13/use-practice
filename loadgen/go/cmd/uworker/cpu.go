@@ -1,5 +1,3 @@
-// upcpu pins one or more workers to a tight arithmetic loop, holding the
-// configured number of cores at ~100% user time and pushing up the run queue.
 package main
 
 import (
@@ -9,21 +7,21 @@ import (
 	"use-practice/loadgen/internal/cfg"
 )
 
-// sink keeps the compiler from optimising the loop body away.
-var sink atomic.Uint64
+// csink keeps the busy loop from being optimised away.
+var csink atomic.Uint64
 
-func main() {
-	c := cfg.Load()
+// runCPU pins the configured number of workers to a tight arithmetic loop,
+// holding that many cores at ~100% user time and pushing up the run queue.
+func runCPU(c *cfg.Config) {
 	workers := c.Int("workers", 2)
 	if workers < 1 {
 		workers = 1
 	}
-
 	runtime.GOMAXPROCS(workers)
 	for i := 0; i < workers; i++ {
 		go burn(uint64(i)*2654435761 + 1)
 	}
-	select {} // run until the process is killed
+	select {} // run until killed
 }
 
 func burn(seed uint64) {
@@ -37,6 +35,6 @@ func burn(seed uint64) {
 			x ^= x << 17
 			acc += x * x
 		}
-		sink.Store(acc)
+		csink.Store(acc)
 	}
 }

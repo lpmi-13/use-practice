@@ -45,6 +45,44 @@ stage_workload() {
   echo "$dir/$service"
 }
 
+# launch_workload <binary> <service> <summary>   (config read from stdin)
+#
+# Stages the binary for the service and starts it under its masked name.
+launch_workload() {
+  local binary="$1"
+  local service="$2"
+  local summary="$3"
+  local bp
+  bp="$(stage_workload "$binary" "$service")"
+  start_service "$service" "$summary" "exec -a \"\$0\" \"$bp\""
+}
+
+# launch_baseline_fleet <binary> [active_service ...]
+#
+# Starts every service in SERVICES that is not listed as active as a low-load
+# "baseline" decoy of the same binary. The decoys are byte-identical to the
+# culprit, so they can only be told apart by their live USE signal.
+launch_baseline_fleet() {
+  local binary="$1"
+  shift
+  local svc active skip
+  for svc in "${SERVICES[@]}"; do
+    skip=0
+    for active in "$@"; do
+      if [ "$active" = "$svc" ]; then
+        skip=1
+        break
+      fi
+    done
+    [ "$skip" -eq 1 ] && continue
+    launch_workload "$binary" "$svc" "service $svc (baseline)" <<EOF
+mode=baseline
+base_mb=$((8 + RANDOM % 33))
+scratch=$RUNTIME_DIR/$svc.scratch
+EOF
+  done
+}
+
 is_scenario() {
   local wanted="${1:-}"
   local scenario

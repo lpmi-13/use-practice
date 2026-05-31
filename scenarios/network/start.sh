@@ -5,9 +5,9 @@ cd "$(dirname "$0")"
 # shellcheck source=../../scripts/lib.sh
 source ../../scripts/lib.sh
 
-require_workload_bin upnet
+require_workload_bin uworker
 
-start_run 2
+start_run "$((5 + RANDOM % 6))"
 CULPRIT="${SERVICES[0]}"
 TARGET_SERVICE="${SERVICES[1]}"
 SINK_PORT=$((5200 + RANDOM % 100))
@@ -21,9 +21,10 @@ else
   NETWORK_SIGNAL="TCP throughput, retransmits, and socket queue pressure"
 fi
 
-# Stage the server (sink) and client (source) from the same masked binary.
-SERVER_BIN="$(stage_workload upnet "$TARGET_SERVICE" <<EOF
-role=server
+# Stage the sink (server). It may need to run inside a netns, so it is launched
+# directly rather than through launch_workload.
+SERVER_BIN="$(stage_workload uworker "$TARGET_SERVICE" <<EOF
+mode=netserver
 proto=$NETWORK_PROTO
 port=$SINK_PORT
 EOF
@@ -55,6 +56,7 @@ BW_MBPS=$BW_MBPS
 PARALLEL=$PARALLEL
 NETWORK_PROTO=$NETWORK_PROTO
 NETWORK_PATH=$NETWORK_PATH
+SERVICES=${SERVICES[*]}
 EOF
 echo "$RUN_ID" > .run-id
 
@@ -67,7 +69,9 @@ Protocol:  $NETWORK_PROTO
 Bandwidth: ${BW_MBPS} Mbit/s offered
 Streams:   $PARALLEL parallel flows
 Signal:    $NETWORK_SIGNAL
-Process:   in-tree network workers (sink + source), running as '$TARGET_SERVICE' / '$CULPRIT'
+Fleet:     ${SERVICES[*]}
+Process:   in-tree network source '$CULPRIT' -> sink '$TARGET_SERVICE'
+           The other services are baseline decoys (tiny loopback chatter).
 Run ID:    $RUN_ID
 EOF
 
@@ -78,22 +82,18 @@ start_service \
 
 sleep 1
 
-CLIENT_BIN="$(stage_workload upnet "$CULPRIT" <<EOF
-role=client
+launch_workload uworker "$CULPRIT" "network source -> $TARGET_HOST:$SINK_PORT (${BW_MBPS}M x$PARALLEL)" <<EOF
+mode=netclient
 proto=$NETWORK_PROTO
 host=$TARGET_HOST
 port=$SINK_PORT
 mbps=$BW_MBPS
 parallel=$PARALLEL
 EOF
-)"
 
-start_service \
-  "$CULPRIT" \
-  "network source -> $TARGET_HOST:$SINK_PORT (${BW_MBPS}M x$PARALLEL)" \
-  "exec -a \"\$0\" \"$CLIENT_BIN\""
+launch_baseline_fleet uworker "$CULPRIT" "$TARGET_SERVICE"
 
-echo "Network scenario running. Service '$CULPRIT' is generating sustained traffic."
+echo "Network scenario running. ${#SERVICES[@]} services are up; one is generating sustained traffic."
 echo "$NETWORK_NOTE"
 echo
 echo "USE method starting points:"
@@ -101,7 +101,7 @@ echo "  Utilization: sar -n DEV 1   (rxkB/s, txkB/s vs link speed)"
 echo "  Saturation:  ss -s, ss -tin (retrans, cwnd)"
 echo "  Errors:      ip -s link, sar -n EDEV 1   (drops, errors)"
 echo
-echo "Host drill-down:"
+echo "Host drill-down (find the heavy talker):"
 echo "  ./use-practice status"
 echo "  ss -tnp"
 echo "  ip -s link"

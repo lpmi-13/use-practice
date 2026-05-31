@@ -1,15 +1,12 @@
 # syntax=docker/dockerfile:1
 
-# Build the Go workloads (cpu, memory, network). Stdlib only, so no network
-# access is needed at build time.
+# Build the generic Go workload (cpu/memory/network + baseline). Stdlib only,
+# so no network access is needed at build time.
 FROM golang:1.24-bookworm AS gobuild
 ENV GOPROXY=off GOFLAGS=-mod=mod
 WORKDIR /src
 COPY use-practice/loadgen/go ./
-RUN set -eu; mkdir -p /out; \
-  for cmd in upcpu upmem upnet; do \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "/out/$cmd" "./cmd/$cmd"; \
-  done
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/uworker ./cmd/uworker
 
 # Build the Rust io_uring disk workload. Crates are fetched from crates.io at
 # build time and pinned by the committed Cargo.lock.
@@ -28,7 +25,7 @@ COPY use-tool/use-tool /usr/local/bin/use-tool
 COPY playground/iximiuz/image/bootstrap-use-practice.sh /opt/iximiuz-labs/bootstrap-use-practice.sh
 COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system/use-practice-bootstrap.service
 
-COPY --from=gobuild /out/upcpu /out/upmem /out/upnet /opt/use-practice/bin/
+COPY --from=gobuild /out/uworker /opt/use-practice/bin/uworker
 COPY --from=rustbuild /out/updisk /opt/use-practice/bin/updisk
 
 RUN <<'EOF'
@@ -56,9 +53,7 @@ chmod 755 /opt/use-practice/use-practice \
   /opt/use-practice/stop-all.sh \
   /opt/use-practice/scripts/wait-lab-ready.sh \
   /opt/iximiuz-labs/bootstrap-use-practice.sh
-chmod 755 /opt/use-practice/bin/upcpu \
-  /opt/use-practice/bin/upmem \
-  /opt/use-practice/bin/upnet \
+chmod 755 /opt/use-practice/bin/uworker \
   /opt/use-practice/bin/updisk
 find /opt/use-practice/scenarios -name '*.sh' -exec chmod 755 {} +
 
@@ -108,7 +103,7 @@ for cmd in bash curl ip jq use-practice use-tool vmstat; do
   }
 done
 
-for workload in upcpu upmem upnet updisk; do
+for workload in uworker updisk; do
   [ -x "/opt/use-practice/bin/${workload}" ] || {
     echo "missing workload binary: ${workload}" >&2
     exit 1

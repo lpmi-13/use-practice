@@ -26,22 +26,30 @@ the machine is acceptable.
 | `disk` | direct random block I/O | Device utilization, queue depth, await |
 | `network` | sustained socket traffic | Interface throughput, TCP saturation, drops |
 
-Each scenario runs a small purpose-built workload binary rather than a
-recognizable load-testing tool. The binary is copied to a per-run, service-named
-path and launched with no arguments, so `ps`, `top`, and `/proc/<pid>/cmdline`
-show only the service identity — there is no `stress-ng`/`fio`/`iperf3` command
-line to grep for. Each run chooses a randomized service-like identity and a
-fresh run ID. Blind runs intentionally avoid naming the resource type, so the
-exercise is solved by following the system signals rather than by
-pattern-matching names.
+Each scenario starts a fleet of 5–10 service-like processes. **One** of them
+runs the resource-specific load profile above; the rest run a low-activity
+"baseline" (a small resident set, sub-1% CPU, and occasional tiny disk/network
+blips) so the host looks like a real, lightly-loaded fleet. Your job is to find
+the culprit by its USE signal, not by spotting the only busy process.
+
+The workload is two generic binaries — `uworker` (Go: cpu/memory/network +
+baseline) and `updisk` (Rust + io_uring: disk + baseline) — rather than a
+recognizable load-testing tool. Within a scenario every service runs the *same*
+binary, copied to a per-run, service-named path and launched with no arguments;
+its parameters come from an adjacent config file it unlinks on startup. So
+`ps`, `top`, `/proc/<pid>/cmdline`, and `/proc/<pid>/exe` show only the service
+identity — there is no `stress-ng`/`fio`/`iperf3` command line to grep for, and
+the culprit is byte-identical to the decoys. Each run also chooses a fresh run
+ID, and blind runs avoid naming the resource type, so the exercise is solved by
+following the system signals rather than by pattern-matching names.
 
 ## Requirements
 
 - Ephemeral Linux VM, preferably iximiuz Labs.
 - Linux host tools such as `top`, `vmstat`, `iostat`, `sar`, `ss`, and `free`.
-- The workload binaries (`upcpu`, `upmem`, `updisk`, `upnet`), built into
-  `./bin`. The disk workload uses `io_uring` direct I/O, so the backing
-  filesystem must support `O_DIRECT` (it falls back to buffered I/O otherwise).
+- The workload binaries (`uworker`, `updisk`), built into `./bin`. The disk
+  workload uses `io_uring` direct I/O, so the backing filesystem must support
+  `O_DIRECT` (it falls back to buffered I/O otherwise).
 
 The iximiuz rootfs build compiles the workload binaries (Go + Rust) in a
 multi-stage Docker build and ships them in the image. For local manual runs,
@@ -165,8 +173,8 @@ investigate it.
 |-- stop-all.sh           # compatibility wrapper for use-practice stop
 |-- bin/                  # compiled workload binaries (built, git-ignored)
 |-- loadgen/
-|   |-- go/               # upcpu, upmem, upnet (Go)
-|   `-- rust/updisk/      # updisk: io_uring direct-I/O worker (Rust)
+|   |-- go/               # uworker: cpu/memory/network + baseline (Go)
+|   `-- rust/updisk/      # updisk: io_uring disk + baseline (Rust)
 |-- playground/
 |   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
 |-- scripts/

@@ -1,8 +1,3 @@
-// upnet drives sustained traffic between a sink (server) and a source
-// (client). The server drains everything it receives; the client opens the
-// configured number of flows and paces each one to its share of the offered
-// bandwidth. The kernel's interface and socket counters report the load the
-// same way they would for any real service.
 package main
 
 import (
@@ -13,27 +8,12 @@ import (
 	"use-practice/loadgen/internal/cfg"
 )
 
-func main() {
-	c := cfg.Load()
-	role := c.Str("role", "server")
+// runNetServer drains everything it receives on the configured port. It is the
+// sink the netclient culprit talks to.
+func runNetServer(c *cfg.Config) {
 	proto := c.Str("proto", "tcp")
-	port := c.Str("port", "5201")
+	addr := ":" + c.Str("port", "5201")
 
-	if role == "server" {
-		runServer(proto, ":"+port)
-		return
-	}
-
-	host := c.Str("host", "127.0.0.1")
-	mbps := c.Int("mbps", 200)
-	parallel := c.Int("parallel", 1)
-	if parallel < 1 {
-		parallel = 1
-	}
-	runClient(proto, net.JoinHostPort(host, port), mbps, parallel)
-}
-
-func runServer(proto, addr string) {
 	if proto == "udp" {
 		pc, err := net.ListenPacket("udp", addr)
 		if err != nil {
@@ -60,7 +40,17 @@ func runServer(proto, addr string) {
 	}
 }
 
-func runClient(proto, addr string, mbps, parallel int) {
+// runNetClient opens the configured number of flows to the sink and paces each
+// to its share of the offered bandwidth.
+func runNetClient(c *cfg.Config) {
+	proto := c.Str("proto", "tcp")
+	addr := net.JoinHostPort(c.Str("host", "127.0.0.1"), c.Str("port", "5201"))
+	mbps := c.Int("mbps", 200)
+	parallel := c.Int("parallel", 1)
+	if parallel < 1 {
+		parallel = 1
+	}
+
 	perConn := mbps * 1_000_000 / 8 / parallel // bytes/sec per flow
 	for i := 0; i < parallel; i++ {
 		go blast(proto, addr, perConn)
@@ -87,8 +77,7 @@ func blast(proto, addr string, bps int) {
 }
 
 // writeRate writes buf repeatedly, sleeping between writes to approximate bps
-// bytes per second. It returns on the first write error so the caller can
-// reconnect.
+// bytes per second. It returns on the first write error so blast can reconnect.
 func writeRate(conn net.Conn, buf []byte, bps int) {
 	if bps < 1 {
 		bps = 1
@@ -107,8 +96,6 @@ func writeRate(conn net.Conn, buf []byte, bps int) {
 }
 
 func fatalRetry() {
-	// Give the supervising script a moment, then exit non-zero so the failure
-	// is visible in the recorded process state.
 	time.Sleep(time.Second)
-	panic("upnet: could not bind listener")
+	panic("uworker: could not bind listener")
 }

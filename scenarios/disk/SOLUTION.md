@@ -23,8 +23,10 @@ iotop -bn1
 cat /proc/<pid>/io
 ```
 
-The recorded service process is the culprit. `pidstat -d 1`, `iotop`, or
-`cat /proc/<pid>/io` will show that process doing the I/O.
+Several look-alike services are running, and the decoys each do a little
+occasional I/O, so don't just look for the one process touching the disk —
+look for the one doing the *most*. `pidstat -d 1`, `iotop`, or
+`cat /proc/<pid>/io` will show one process dominating reads/writes.
 
 The scratch data lives under the scenario's `.runtime/` directory and
 disappears when the scenario is stopped.

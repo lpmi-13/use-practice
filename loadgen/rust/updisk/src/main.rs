@@ -1,14 +1,21 @@
-//! updisk drives direct, random block I/O against a bounded scratch file using
-//! io_uring. It keeps `iodepth` operations in flight at all times, which is
-//! what produces the classic disk-bottleneck signal: device `%util` near 100%,
-//! `aqu-sz` above 1, and rising `await` in `iostat -xz 1`.
+//! updisk is the generic Rust workload used by the disk scenario. Every service
+//! in that scenario runs this same binary; a config file picks its behavior:
+//!
+//!   * `mode=disk`     — keep `iodepth` direct (`O_DIRECT`) random I/O ops in
+//!                       flight via io_uring, producing the classic disk
+//!                       bottleneck signal (`%util` ~100%, `aqu-sz` > 1, rising
+//!                       `await`). This is the culprit.
+//!   * `mode=baseline` — a low-activity heartbeat (small resident set, sub-1%
+//!                       CPU, occasional tiny buffered I/O). These are the
+//!                       decoys the culprit hides among.
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use io_uring::{opcode, types, IoUring};
 
@@ -48,6 +55,21 @@ fn get_int(m: &HashMap<String, String>, k: &str, def: i64) -> i64 {
     m.get(k).and_then(|v| v.parse().ok()).unwrap_or(def)
 }
 
+fn get_str(m: &HashMap<String, String>, k: &str, def: &str) -> String {
+    match m.get(k) {
+        Some(v) if !v.is_empty() => v.clone(),
+        _ => def.to_string(),
+    }
+}
+
+fn main() {
+    let m = load_cfg();
+    match get_str(&m, "mode", "baseline").as_str() {
+        "disk" => run_disk(&m),
+        _ => run_baseline(&m),
+    }
+}
+
 /// Minimal xorshift PRNG, enough to scatter offsets without pulling in a crate.
 struct Rng(u64);
 impl Rng {
@@ -60,6 +82,48 @@ impl Rng {
         x
     }
 }
+
+// --- baseline (decoy) -------------------------------------------------------
+
+/// A low-activity service: hold a small resident set, tick the CPU well under
+/// 1%, and do a little buffered disk I/O now and then. Never dominant.
+fn run_baseline(m: &HashMap<String, String>) {
+    let base_mb = get_int(m, "base_mb", 16).max(1) as usize;
+    let scratch = get_str(m, "scratch", "");
+
+    // Held resident set.
+    let mut buf = vec![1u8; base_mb * 1024 * 1024];
+
+    let mut x: u64 = 1;
+    let mut tick: u64 = 0;
+    let blob = vec![0u8; 8192];
+    loop {
+        // Sub-1% CPU tick.
+        for _ in 0..200_000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+        }
+        buf[0] = x as u8; // keep the buffer (and compiler) honest
+
+        // Tiny buffered disk blip roughly every ~3s (15 * 200ms).
+        tick += 1;
+        if tick % 15 == 0 && !scratch.is_empty() {
+            if let Ok(mut f) = OpenOptions::new().create(true).write(true).open(&scratch) {
+                let _ = f.write_all(&blob);
+                let _ = f.sync_all();
+            }
+            if let Ok(mut f) = File::open(&scratch) {
+                let mut sink = [0u8; 8192];
+                let _ = f.read(&mut sink);
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+// --- disk (culprit) ---------------------------------------------------------
 
 fn alloc_aligned(size: usize) -> *mut u8 {
     unsafe {
@@ -107,13 +171,12 @@ fn open_target(path: &Path) -> (File, bool) {
     }
 }
 
-fn main() {
-    let m = load_cfg();
-    let file = m.get("file").cloned().unwrap_or_else(|| "/tmp/use-practice.bin".into());
-    let size = (get_int(&m, "size_mb", 256).max(1) as u64) * 1024 * 1024;
-    let bs = (get_int(&m, "bs_k", 64).max(4) as usize) * 1024;
-    let iodepth = get_int(&m, "iodepth", 16).clamp(1, 256) as usize;
-    let rw = m.get("rw").cloned().unwrap_or_else(|| "randwrite".into());
+fn run_disk(m: &HashMap<String, String>) {
+    let file = get_str(m, "file", "/tmp/use-practice.bin");
+    let size = (get_int(m, "size_mb", 256).max(1) as u64) * 1024 * 1024;
+    let bs = (get_int(m, "bs_k", 64).max(4) as usize) * 1024;
+    let iodepth = get_int(m, "iodepth", 16).clamp(1, 256) as usize;
+    let rw = get_str(m, "rw", "randwrite");
     let path = PathBuf::from(&file);
 
     prefill(&path, size).expect("prefill scratch file");

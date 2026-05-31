@@ -20,9 +20,9 @@ top -bcn1 w512
 ps -eo pid,ppid,pgid,stat,pcpu,pmem,rss,args --sort=-rss | head
 ```
 
-The recorded service process with disproportionate resident memory is the
-culprit. `top` sorted by RES (`Shift+M`) or `ps --sort=-rss` will show the
-service process holding the bytes.
+Several look-alike services are running; the one with disproportionate resident
+memory is the culprit. `top` sorted by RES (`Shift+M`) or `ps --sort=-rss` will
+show it holding the bytes, well above the small steady footprint of the decoys.
 
 ## TSA paragraph
 

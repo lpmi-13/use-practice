@@ -7,7 +7,7 @@ source ../../scripts/lib.sh
 
 require_workload_bin updisk
 
-start_run 1
+start_run "$((5 + RANDOM % 6))"
 CULPRIT="$(pick_random_service)"
 BS_OPTIONS=(4 16 64 256)
 BS_K="${BS_OPTIONS[$((RANDOM % ${#BS_OPTIONS[@]}))]}"
@@ -25,6 +25,7 @@ IODEPTH=$IODEPTH
 RW=$RW
 DISK_FILE_SIZE_MB=$DISK_FILE_SIZE_MB
 DISK_FILE=$DISK_FILE
+SERVICES=${SERVICES[*]}
 EOF
 echo "$RUN_ID" > .run-id
 
@@ -36,34 +37,32 @@ Block:     ${BS_K}k
 IO depth:  $IODEPTH
 File size: ${DISK_FILE_SIZE_MB}M
 File:      $DISK_FILE
+Fleet:     ${SERVICES[*]}
 Process:   in-tree io_uring direct-I/O worker, running as '$CULPRIT'
+           The other services are baseline decoys (occasional tiny I/O).
 Run ID:    $RUN_ID
 EOF
 
 mkdir -p "$RUNTIME_DIR"
-BINPATH="$(stage_workload updisk "$CULPRIT" <<EOF
+launch_workload updisk "$CULPRIT" "disk worker rw=$RW bs=${BS_K}k iodepth=$IODEPTH (direct)" <<EOF
+mode=disk
 file=$DISK_FILE
 size_mb=$DISK_FILE_SIZE_MB
 bs_k=$BS_K
 iodepth=$IODEPTH
 rw=$RW
 EOF
-)"
+launch_baseline_fleet updisk "$CULPRIT"
 
-start_service \
-  "$CULPRIT" \
-  "disk worker rw=$RW bs=${BS_K}k iodepth=$IODEPTH (direct)" \
-  "exec -a \"\$0\" \"$BINPATH\""
-
-echo "Disk scenario running. Service '$CULPRIT' is driving direct random I/O."
-echo "Disk footprint is bounded to one ${DISK_FILE_SIZE_MB} MB file under $RUNTIME_DIR."
+echo "Disk scenario running. ${#SERVICES[@]} services are up; one is driving direct random I/O."
+echo "The heavy workload is bounded to one ${DISK_FILE_SIZE_MB} MB file under $RUNTIME_DIR."
 echo
 echo "USE method starting points:"
 echo "  Utilization: iostat -xz 1   (look at %util column)"
 echo "  Saturation:  iostat -xz 1   (aqu-sz / await rising)"
 echo "  Errors:      dmesg | grep -i 'i/o error\\|ata'"
 echo
-echo "Host drill-down:"
+echo "Host drill-down (find which service does the most I/O):"
 echo "  ./use-practice status"
 echo "  pidstat -d 1"
 echo "  iotop -bn1"

@@ -7,12 +7,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin="$root/bin"
 mkdir -p "$bin"
 
-echo "building Go workloads (upcpu, upmem, upnet)..."
+echo "building Go workload (uworker)..."
 (
   cd "$root/loadgen/go"
-  for cmd in upcpu upmem upnet; do
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$bin/$cmd" "./cmd/$cmd"
-  done
+  CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$bin/uworker" ./cmd/uworker
 )
 
 echo "building Rust disk workload (updisk)..."
