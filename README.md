@@ -89,7 +89,7 @@ The same commands are available through the dispatcher:
 
 1. Start a blind or named scenario.
 2. Check the host-level USE signals, either directly or through
-   `/home/adam/projects/use-tool`:
+   `use-tool practice system`:
    - CPU: `top`, `mpstat -P ALL 1`, `vmstat 1`
    - Memory: `free -m`, `vmstat 1`, `cat /proc/pressure/memory`
    - Disk: `iostat -xz 1`, `pidstat -d 1`
@@ -106,9 +106,10 @@ The same commands are available through the dispatcher:
 ## iximiuz Deployment
 
 The iximiuz path follows the same rootfs-image pattern as the companion labs:
-the repo, `use-tool`, workload packages, and bootstrap service are baked into a
-custom root filesystem image, then `playground/iximiuz/manifest.yaml` points the
-playground at that image.
+the repo, workload packages, and bootstrap service are baked into a custom root
+filesystem image, then `playground/iximiuz/manifest.yaml` points the playground
+at that image. The manifest startup script installs the latest `use-tool`
+release when a lab starts.
 
 Rootfs GHCR package:
 
@@ -121,7 +122,6 @@ Build and optionally push the rootfs image:
 ```bash
 docker login ghcr.io
 
-# Downloads the latest use-tool release by default.
 IMAGE_TAG=v1 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
 ```
 
@@ -130,10 +130,6 @@ This creates:
 ```text
 ghcr.io/lpmi-13/use-practice-rootfs:${IMAGE_TAG}
 ```
-
-Set `USE_TOOL_VERSION=v0.5.0` to pin a specific `use-tool` release tag. Leave it
-unset, or set `USE_TOOL_VERSION=latest`, to resolve the latest GitHub release at
-build time.
 
 The build script updates `playground/iximiuz/manifest.yaml` after a successful
 build. Verify the published image reference before creating or updating the

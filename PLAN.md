@@ -118,7 +118,7 @@ use-practice status            Show the active run ID and live workload PIDs.
 and should encourage pairing with:
 
 ```bash
-/home/adam/projects/use-tool/use-tool practice system
+use-tool practice system
 ```
 
 ## Implementation Shape

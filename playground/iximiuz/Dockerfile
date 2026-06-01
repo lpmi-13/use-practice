@@ -21,7 +21,6 @@ USER root
 ENV HOME=/root
 
 COPY use-practice /opt/use-practice
-COPY use-tool/use-tool /usr/local/bin/use-tool
 COPY playground/iximiuz/image/bootstrap-use-practice.sh /opt/iximiuz-labs/bootstrap-use-practice.sh
 COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system/use-practice-bootstrap.service
 
@@ -46,7 +45,6 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   sysstat
 rm -rf /var/lib/apt/lists/*
 
-chmod 755 /usr/local/bin/use-tool
 chmod 755 /opt/use-practice/use-practice \
   /opt/use-practice/run.sh \
   /opt/use-practice/reveal.sh \
@@ -96,7 +94,7 @@ chmod 755 /usr/local/bin/use-practice \
   /usr/local/bin/use-practice-reveal \
   /usr/local/bin/use-practice-stop
 
-for cmd in bash curl ip jq use-practice use-tool vmstat; do
+for cmd in bash curl ip jq use-practice vmstat; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     echo "missing expected tool: ${cmd}" >&2
     exit 1
