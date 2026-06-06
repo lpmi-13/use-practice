@@ -8,12 +8,14 @@ WORKDIR /src
 COPY use-practice/loadgen/go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/uworker ./cmd/uworker
 
-# Build the Rust io_uring disk workload. Crates are fetched from crates.io at
-# build time and pinned by the committed Cargo.lock.
+# Build the Rust io_uring disk workload and kernel-wait workload. Crates are
+# fetched from crates.io at build time and pinned by the committed Cargo.lock.
 FROM rust:1-bookworm AS rustbuild
 WORKDIR /src
 COPY use-practice/loadgen/rust/updisk ./
-RUN cargo build --release --locked && install -D target/release/updisk /out/updisk
+RUN cargo build --release --locked \
+  && install -D target/release/updisk /out/updisk \
+  && install -D target/release/uwait /out/uwait
 
 FROM ghcr.io/iximiuz/labs/rootfs:ubuntu-24-04
 
@@ -26,6 +28,7 @@ COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system
 
 COPY --from=gobuild /out/uworker /opt/use-practice/bin/uworker
 COPY --from=rustbuild /out/updisk /opt/use-practice/bin/updisk
+COPY --from=rustbuild /out/uwait /opt/use-practice/bin/uwait
 
 RUN <<'EOF'
 set -eu
@@ -52,7 +55,8 @@ chmod 755 /opt/use-practice/use-practice \
   /opt/use-practice/scripts/wait-lab-ready.sh \
   /opt/iximiuz-labs/bootstrap-use-practice.sh
 chmod 755 /opt/use-practice/bin/uworker \
-  /opt/use-practice/bin/updisk
+  /opt/use-practice/bin/updisk \
+  /opt/use-practice/bin/uwait
 find /opt/use-practice/scenarios -name '*.sh' -exec chmod 755 {} +
 
 if id laborant >/dev/null 2>&1; then
@@ -101,7 +105,7 @@ for cmd in bash curl ip jq use-practice vmstat; do
   }
 done
 
-for workload in uworker updisk; do
+for workload in uworker updisk uwait; do
   [ -x "/opt/use-practice/bin/${workload}" ] || {
     echo "missing workload binary: ${workload}" >&2
     exit 1

@@ -61,7 +61,8 @@ USE signals become weak.
 Host-only scenarios make the signal obvious enough to teach:
 
 - CPU pressure should show up in `top`, `mpstat`, `vmstat`, load average, and
-  CPU PSI.
+  CPU PSI. Load average must be cross-checked with runnable vs blocked task
+  state because Linux load includes D-state tasks as well as runnable tasks.
 - Memory pressure should show up in `free`, `vmstat`, memory PSI, and OOM or
   eviction-like symptoms where applicable.
 - Disk pressure should show up in `iostat`, I/O PSI, and per-process I/O tools.
@@ -79,7 +80,7 @@ The first host-only catalog should stay small:
 
 | Name | Primary signal | Culprit profile |
 |---|---|---|
-| `cpu` | CPU utilization high; run queue pressure | busy compute worker |
+| `cpu` | CPU utilization high; run queue, load, D-state evidence | busy compute worker or non-I/O kernel-wait worker |
 | `memory` | RSS high; memory PSI or swap pressure | large resident set |
 | `disk` | device `%util`, `await`, `aqu-sz`, I/O PSI | io_uring direct random I/O |
 | `network` | interface throughput, TCP saturation, drops | socket source/sink over a veth/netns path |
@@ -89,13 +90,14 @@ culprit profile above; the rest run a low-activity "baseline" (small resident
 set, sub-1% CPU, occasional tiny disk/network blips) so the culprit must be
 found by signal magnitude, not by being the only active process.
 
-The fleet is two generic workload binaries — `uworker` (Go: cpu/memory/network
-+ baseline) and `updisk` (Rust + io_uring: disk + baseline) — rather than a
-recognizable load-testing tool. Behavior is chosen by a `mode=` line in a config
-file. Within a scenario every service runs the *same* binary, staged to a
-per-run, service-named path and launched with no arguments and its config in an
-adjacent file it unlinks on start, so `ps`, `top`, `/proc/<pid>/cmdline`, and
-`/proc/<pid>/exe` reveal only the service identity and the culprit is
+The fleet is three generic workload binaries — `uworker` (Go:
+cpu/memory/network + baseline), `updisk` (Rust + io_uring: disk + baseline),
+and `uwait` (Rust: non-I/O kernel waits + baseline) — rather than a
+recognizable load-testing tool. Behavior is chosen by a `mode=` line in a
+config file. Within a scenario every service runs the *same* binary, staged to
+a per-run, service-named path and launched with no arguments and its config in
+an adjacent file it unlinks on start, so `ps`, `top`, `/proc/<pid>/cmdline`,
+and `/proc/<pid>/exe` reveal only the service identity and the culprit is
 byte-identical to the decoys.
 
 Each run should choose plausible service-like identities (`payments-api`,

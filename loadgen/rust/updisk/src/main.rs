@@ -29,7 +29,11 @@ fn cfg_path() -> PathBuf {
     }
     let exe = std::env::current_exe().expect("current_exe");
     let dir = exe.parent().expect("exe dir").to_path_buf();
-    let name = exe.file_name().expect("exe name").to_string_lossy().to_string();
+    let name = exe
+        .file_name()
+        .expect("exe name")
+        .to_string_lossy()
+        .to_string();
     dir.join(format!("{name}.cfg"))
 }
 

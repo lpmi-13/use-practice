@@ -13,11 +13,13 @@ echo "building Go workload (uworker)..."
   CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$bin/uworker" ./cmd/uworker
 )
 
-echo "building Rust disk workload (updisk)..."
+echo "building Rust workloads (updisk, uwait)..."
 (
   cd "$root/loadgen/rust/updisk"
   cargo build --release
-  cp "target/release/updisk" "$bin/updisk"
+  target_dir="${CARGO_TARGET_DIR:-target}"
+  cp "$target_dir/release/updisk" "$bin/updisk"
+  cp "$target_dir/release/uwait" "$bin/uwait"
 )
 
 echo "done -> $bin"

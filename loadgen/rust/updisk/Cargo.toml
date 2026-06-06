@@ -7,6 +7,10 @@ edition = "2021"
 name = "updisk"
 path = "src/main.rs"
 
+[[bin]]
+name = "uwait"
+path = "src/uwait.rs"
+
 [dependencies]
 io-uring = "0.7"
 libc = "0.2"

@@ -21,7 +21,7 @@ the machine is acceptable.
 
 | Scenario | Workload | Primary signal |
 |---|---|---|
-| `cpu` | busy compute worker | Host CPU utilization and run queue |
+| `cpu` | busy compute or non-I/O kernel wait | CPU utilization, run queue, load, D-state wait |
 | `memory` | large resident set | Resident memory, PSI, swap/OOM pressure |
 | `disk` | direct random block I/O | Device utilization, queue depth, await |
 | `network` | sustained socket traffic | Interface throughput, TCP saturation, drops |
@@ -32,16 +32,24 @@ runs the resource-specific load profile above; the rest run a low-activity
 blips) so the host looks like a real, lightly-loaded fleet. Your job is to find
 the culprit by its USE signal, not by spotting the only busy process.
 
-The workload is two generic binaries — `uworker` (Go: cpu/memory/network +
-baseline) and `updisk` (Rust + io_uring: disk + baseline) — rather than a
-recognizable load-testing tool. Within a scenario every service runs the *same*
-binary, copied to a per-run, service-named path and launched with no arguments;
-its parameters come from an adjacent config file it unlinks on startup. So
-`ps`, `top`, `/proc/<pid>/cmdline`, and `/proc/<pid>/exe` show only the service
-identity — there is no `stress-ng`/`fio`/`iperf3` command line to grep for, and
-the culprit is byte-identical to the decoys. Each run also chooses a fresh run
-ID, and blind runs avoid naming the resource type, so the exercise is solved by
-following the system signals rather than by pattern-matching names.
+The workload is three generic binaries — `uworker` (Go: cpu/memory/network +
+baseline), `updisk` (Rust + io_uring: disk + baseline), and `uwait` (Rust:
+non-I/O kernel waits + baseline) — rather than a recognizable load-testing
+tool. Within a scenario every service runs the *same* binary, copied to a
+per-run, service-named path and launched with no arguments; its parameters come
+from an adjacent config file it unlinks on startup. So `ps`, `top`,
+`/proc/<pid>/cmdline`, and `/proc/<pid>/exe` show only the service identity —
+there is no `stress-ng`/`fio`/`iperf3` command line to grep for, and the culprit
+is byte-identical to the decoys. Each run also chooses a fresh run ID, and blind
+runs avoid naming the resource type, so the exercise is solved by following the
+system signals rather than by pattern-matching names.
+
+The CPU scenario has two profiles. One creates ordinary runnable run-queue
+pressure with more busy workers than CPUs. The other combines CPU burners with
+many threads blocked in a non-I/O uninterruptible kernel wait (`vfork`), so
+learners can see why load average must be paired with `vmstat r/b`, thread
+state, and wait-channel evidence. For targeted local testing, set
+`CPU_PROFILE=runq` or `CPU_PROFILE=kernelwait` before running `./run.sh cpu`.
 
 ### Why There Is No CPU "Errors" Scenario
 
@@ -66,7 +74,7 @@ state.
 
 - Ephemeral Linux VM, preferably iximiuz Labs.
 - Linux host tools such as `top`, `vmstat`, `iostat`, `sar`, `ss`, and `free`.
-- The workload binaries (`uworker`, `updisk`), built into `./bin`. The disk
+- The workload binaries (`uworker`, `updisk`, `uwait`), built into `./bin`. The disk
   workload uses `io_uring` direct I/O, so the backing filesystem must support
   `O_DIRECT` (it falls back to buffered I/O otherwise).
 
@@ -109,7 +117,8 @@ The same commands are available through the dispatcher:
 1. Start a blind or named scenario.
 2. Check the host-level USE signals, either directly or through
    `use-tool practice system`:
-   - CPU: `top`, `mpstat -P ALL 1`, `vmstat 1`
+   - CPU: `top`, `mpstat -P ALL 1`, `vmstat 1`,
+     `ps -eLo pid,tid,stat,wchan,comm`
    - Memory: `free -m`, `vmstat 1`, `cat /proc/pressure/memory`
    - Disk: `iostat -xz 1`, `pidstat -d 1`
    - Network: `sar -n DEV 1`, `ss -s`, `ip -s link`
@@ -189,7 +198,7 @@ investigate it.
 |-- bin/                  # compiled workload binaries (built, git-ignored)
 |-- loadgen/
 |   |-- go/               # uworker: cpu/memory/network + baseline (Go)
-|   `-- rust/updisk/      # updisk: io_uring disk + baseline (Rust)
+|   `-- rust/updisk/      # updisk: io_uring disk; uwait: kernel waits (Rust)
 |-- playground/
 |   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
 |-- scripts/
