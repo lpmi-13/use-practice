@@ -43,6 +43,25 @@ the culprit is byte-identical to the decoys. Each run also chooses a fresh run
 ID, and blind runs avoid naming the resource type, so the exercise is solved by
 following the system signals rather than by pattern-matching names.
 
+### Why There Is No CPU "Errors" Scenario
+
+The scenarios exercise the USE triad — utilization, saturation, and errors —
+wherever a workload can legitimately produce each signal. The clearest
+workload-reachable error is in the `memory` scenario, which can drive swap and
+OOM kills. There is deliberately no scenario that produces *CPU* errors.
+
+In Brendan Gregg's USE method a CPU error is a hardware fault — a Machine Check
+Exception (MCE), an ECC/cache parity error, or thermal throttling — reported via
+`/sys/devices/system/machinecheck/`, EDAC, the per-core `thermal_throttle`
+counters, or the kernel log. Utilization and saturation are products of
+*workload* that any process can generate on demand; a CPU error is a product of
+*hardware*, and userspace cannot make one happen. The only facilities that can
+fabricate one deterministically — `mce-inject` (software MCE injection) and ACPI
+APEI `einj` (firmware error injection) — need root, debugfs, x86, and (for EINJ)
+server-class firmware. None of that is available in the ephemeral, unprivileged
+training VM, so a CPU-errors scenario could never reliably reproduce its target
+state.
+
 ## Requirements
 
 - Ephemeral Linux VM, preferably iximiuz Labs.
