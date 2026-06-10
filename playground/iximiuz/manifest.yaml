@@ -72,8 +72,8 @@ playground:
                 - address: 172.16.0.2/24
                   network: local
           resources:
-            cpuCount: 4
-            ramSize: 8GiB
+            cpuCount: 2
+            ramSize: 4GiB
     tabs:
         - id: terminal-lab-01
           kind: terminal
