@@ -2,102 +2,130 @@ kind: playground
 name: use-practice-4ce4816f
 base: flexbox
 title: USE Practice
-description: Practice Linux USE-method investigations against randomized host-level scenarios.
+description: |-
+    Practice Linux USE-method investigations against randomized host-level scenarios.
+
+    It already has the [use-tool](https://github.com/lpmi-13/use-tool) installed, so you can begin with that, or just run a free-form investigation.
+cover: /content/files/playgrounds/use-practice-4ce4816f/__static__/usemethodflow.png
 categories:
-  - linux
-  - networking
-  - observability
+    - linux
+    - networking
+    - observability
+markdown: |-
+    This playground features a ready-made random load generator that you can use to run through the various stages of Brendan Gregg's [USE Methodolgy](https://www.brendangregg.com/usemethod.html).
+
+    It analyzes the load across 4 different resources:
+    - cpu
+    - memory
+    - disk
+    - network
+
+    It's a bottom-up approach, exploring whether any of those resources are experiencing the following
+    - high **U**tilization
+    - **S**aturation
+    - **E**rrors
+
+    and it can be done very quickly with existing linux tooling like:
+    - uptime
+    - free
+    - vmstat
+    - mpstat
+    - sar
+    - cat /proc/*
+    - iostat
+
+    ...etc
 playground:
-  networks:
-    - name: local
-      subnet: 172.16.0.0/24
-  machines:
-    - name: lab-01
-      users:
-        - name: root
-        - name: laborant
-          default: true
-          welcome: |
-            This VM is preloaded for USE-method investigation practice.
+    networks:
+        - name: local
+          subnet: 172.16.0.0/24
+    machines:
+        - name: lab-01
+          users:
+            - name: root
+            - name: laborant
+              default: true
+              welcome: |
+                This VM is preloaded for USE-method investigation practice.
 
-            Start a random scenario:
-              cd ~/use-practice
-              ./run.sh
+                Start a random scenario:
+                  use-practice run
 
-            Investigate with the companion CLI:
-              use-tool practice system
+                Investigate with the companion CLI:
+                  use-tool practice system
 
-            Useful commands:
-              ./use-practice status
-              ./use-practice reveal
-              ./use-practice stop
+                Useful commands:
+                  use-practice status
+                  use-practice reveal
+                  use-practice run cpu|memory|disk|network
+                  use-practice stop
 
-            The scenarios intentionally create CPU, memory, disk, network, or
-            application pressure. This VM is disposable; do not run these
-            workloads on a personal machine.
-      drives:
-        - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v2
-          mount: /
-          size: 30GiB
-      network:
-        interfaces:
-          - address: 172.16.0.2/24
-            network: local
-      resources:
-        cpuCount: 4
-        ramSize: 8GiB
-  tabs:
-    - id: terminal-lab-01
-      kind: terminal
-      name: lab-01
-      machine: lab-01
-  initTasks:
-    init_lab_01_1:
-      name: init_lab_01_1
-      machine: lab-01
-      init: true
-      user: root
-      timeout_seconds: 300
-      run: |-
-        #!/bin/bash
-        set -euo pipefail
+                The scenarios intentionally create CPU, memory, disk, network, or
+                application pressure. This VM is disposable; do not run these
+                workloads on a personal machine.
+          drives:
+            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v2
+              mount: /
+              size: 30GiB
+          network:
+            interfaces:
+                - address: 172.16.0.2/24
+                  network: local
+          resources:
+            cpuCount: 4
+            ramSize: 8GiB
+    tabs:
+        - id: terminal-lab-01
+          kind: terminal
+          name: lab-01
+          machine: lab-01
+    initTasks:
+        init_lab_01_1:
+            name: init_lab_01_1
+            machine: lab-01
+            init: true
+            user: root
+            timeout_seconds: 300
+            run: |-
+                #!/bin/bash
+                set -euo pipefail
 
-        install_use_tool_latest() {
-          local release_repo tag version arch asset base_url tmp
+                install_use_tool_latest() {
+                  local release_repo tag version arch asset base_url tmp
 
-          source /opt/use-practice/scripts/lib/versions.sh
-          release_repo="${USE_TOOL_RELEASE_REPO}"
+                  source /opt/use-practice/scripts/lib/versions.sh
+                  release_repo="${USE_TOOL_RELEASE_REPO}"
 
-          case "$(uname -m)" in
-            amd64|x86_64) arch="amd64" ;;
-            arm64|aarch64) arch="arm64" ;;
-            *) echo "unsupported use-tool release architecture: $(uname -m)" >&2; exit 1 ;;
-          esac
+                  case "$(uname -m)" in
+                    amd64|x86_64) arch="amd64" ;;
+                    arm64|aarch64) arch="arm64" ;;
+                    *) echo "unsupported use-tool release architecture: $(uname -m)" >&2; exit 1 ;;
+                  esac
 
-          tag="$(curl -fsSL "https://api.github.com/repos/${release_repo}/releases/latest" | jq -r '.tag_name // empty')"
-          [[ -n "${tag}" ]] || { echo "could not resolve latest use-tool release tag" >&2; exit 1; }
+                  tag="$(curl -fsSL "https://api.github.com/repos/${release_repo}/releases/latest" | jq -r '.tag_name // empty')"
+                  [[ -n "${tag}" ]] || { echo "could not resolve latest use-tool release tag" >&2; exit 1; }
 
-          version="${tag#v}"
-          asset="use-tool_${version}_linux_${arch}.tar.gz"
-          base_url="https://github.com/${release_repo}/releases/download/${tag}"
-          tmp="$(mktemp -d /tmp/use-tool-release.XXXXXX)"
-          trap 'rm -rf "${tmp}"' RETURN
+                  version="${tag#v}"
+                  asset="use-tool_${version}_linux_${arch}.tar.gz"
+                  base_url="https://github.com/${release_repo}/releases/download/${tag}"
+                  tmp="$(mktemp -d /tmp/use-tool-release.XXXXXX)"
+                  trap 'rm -rf "${tmp}"' RETURN
 
-          curl -fsSL -o "${tmp}/${asset}" "${base_url}/${asset}"
-          curl -fsSL -o "${tmp}/checksums.txt" "${base_url}/checksums.txt"
-          (cd "${tmp}" && grep -F "  ${asset}" checksums.txt | sha256sum -c -)
-          tar -xzf "${tmp}/${asset}" -C "${tmp}" use-tool
-          install -m 0755 "${tmp}/use-tool" /usr/local/bin/use-tool
-        }
+                  curl -fsSL -o "${tmp}/${asset}" "${base_url}/${asset}"
+                  curl -fsSL -o "${tmp}/checksums.txt" "${base_url}/checksums.txt"
+                  (cd "${tmp}" && grep -F "  ${asset}" checksums.txt | sha256sum -c -)
+                  tar -xzf "${tmp}/${asset}" -C "${tmp}" use-tool
+                  install -m 0755 "${tmp}/use-tool" /usr/local/bin/use-tool
+                }
 
-        install_use_tool_latest
-        systemctl reset-failed use-practice-bootstrap.service || true
-        systemctl restart use-practice-bootstrap.service
-        /opt/use-practice/scripts/wait-lab-ready.sh
-  accessControl:
-    canList:
-      - anyone
-    canRead:
-      - anyone
-    canStart:
-      - anyone
+                install_use_tool_latest
+                systemctl reset-failed use-practice-bootstrap.service || true
+                systemctl restart use-practice-bootstrap.service
+                /opt/use-practice/scripts/wait-lab-ready.sh
+    accessControl:
+        canList:
+            - anyone
+        canRead:
+            - anyone
+        canStart:
+            - anyone
