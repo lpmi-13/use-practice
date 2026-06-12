@@ -38,6 +38,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   bash \
   ca-certificates \
   curl \
+  ethtool \
   git \
   iproute2 \
   iotop \
