@@ -1,0 +1,1 @@
+- would it be possible to distinguish (and simulate) varying cpu saturation scenarios based on whether it's too many runnable threads or I/O Wait (D-State) threads? And if so, should we also bake that distinction into the use-tool (or is this dealt with in a separate part of Brendan Gregg's work...maybe on-cpu vs off-cpu profiling?)
