@@ -301,23 +301,20 @@ delete_scenario_resources() {
 
 print_recorded_processes() {
   local file="$1"
-  local pid name summary logfile
+  local pid name _summary _logfile
 
   if [ ! -f "$file" ]; then
     echo "No recorded workload processes."
     return 0
   fi
 
-  printf '%-8s %-18s %-10s %s\n' "PID" "SERVICE" "STATE" "COMMAND"
-  while IFS=$'\t' read -r pid name summary logfile; do
+  printf '%-8s %-18s %-10s\n' "PID" "SERVICE" "STATE"
+  while IFS=$'\t' read -r pid name _summary _logfile; do
     [ -n "$pid" ] || continue
     if kill -0 "$pid" >/dev/null 2>&1; then
-      printf '%-8s %-18s %-10s %s\n' "$pid" "$name" "running" "$summary"
+      printf '%-8s %-18s %-10s\n' "$pid" "$name" "running"
     else
-      printf '%-8s %-18s %-10s %s\n' "$pid" "$name" "exited" "$summary"
-      if [ -n "${logfile:-}" ] && [ -f "$logfile" ]; then
-        echo "  log: $logfile"
-      fi
+      printf '%-8s %-18s %-10s\n' "$pid" "$name" "exited"
     fi
   done < "$file"
 }

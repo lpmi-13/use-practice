@@ -13,6 +13,8 @@ import (
 func runNetServer(c *cfg.Config) {
 	proto := c.Str("proto", "tcp")
 	addr := ":" + c.Str("port", "5201")
+	readBPS := c.Int("read_bps", 0)
+	readBuf := c.Int("read_buf", 0)
 
 	if proto == "udp" {
 		pc, err := net.ListenPacket("udp", addr)
@@ -36,7 +38,14 @@ func runNetServer(c *cfg.Config) {
 		if err != nil {
 			continue
 		}
-		go io.Copy(io.Discard, conn)
+		if readBuf > 0 {
+			setTCPReadBuffer(conn, readBuf)
+		}
+		if readBPS > 0 {
+			go drainSlow(conn, readBPS)
+		} else {
+			go io.Copy(io.Discard, conn)
+		}
 	}
 }
 
@@ -47,18 +56,19 @@ func runNetClient(c *cfg.Config) {
 	addr := net.JoinHostPort(c.Str("host", "127.0.0.1"), c.Str("port", "5201"))
 	mbps := c.Int("mbps", 200)
 	parallel := c.Int("parallel", 1)
+	writeBuf := c.Int("write_buf", 0)
 	if parallel < 1 {
 		parallel = 1
 	}
 
 	perConn := mbps * 1_000_000 / 8 / parallel // bytes/sec per flow
 	for i := 0; i < parallel; i++ {
-		go blast(proto, addr, perConn)
+		go blast(proto, addr, perConn, writeBuf)
 	}
 	select {}
 }
 
-func blast(proto, addr string, bps int) {
+func blast(proto, addr string, bps int, writeBuf int) {
 	chunk := 65536
 	if proto == "udp" {
 		chunk = 1400
@@ -70,6 +80,9 @@ func blast(proto, addr string, bps int) {
 		if err != nil {
 			time.Sleep(time.Second)
 			continue
+		}
+		if writeBuf > 0 {
+			setTCPWriteBuffer(conn, writeBuf)
 		}
 		writeRate(conn, buf, bps)
 		conn.Close()
@@ -92,6 +105,38 @@ func writeRate(conn net.Conn, buf []byte, bps int) {
 			return
 		}
 		time.Sleep(interval)
+	}
+}
+
+func drainSlow(conn net.Conn, bps int) {
+	defer conn.Close()
+	if bps < 1 {
+		bps = 1
+	}
+	buf := make([]byte, 4096)
+	chunksPerSec := bps / len(buf)
+	if chunksPerSec < 1 {
+		chunksPerSec = 1
+	}
+	interval := time.Second / time.Duration(chunksPerSec)
+	for {
+		if _, err := conn.Read(buf); err != nil {
+			return
+		}
+		time.Sleep(interval)
+	}
+}
+
+func setTCPReadBuffer(conn net.Conn, bytes int) {
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetReadBuffer(bytes)
+	}
+}
+
+func setTCPWriteBuffer(conn net.Conn, bytes int) {
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetWriteBuffer(bytes)
+		_ = tcp.SetNoDelay(true)
 	}
 }
 

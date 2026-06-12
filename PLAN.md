@@ -80,10 +80,10 @@ The first host-only catalog should stay small:
 
 | Name | Primary signal | Culprit profile |
 |---|---|---|
-| `cpu` | CPU utilization high; run queue, load, D-state evidence | busy compute worker or non-I/O kernel-wait worker |
-| `memory` | RSS high; memory PSI or swap pressure | large resident set |
-| `disk` | device `%util`, `await`, `aqu-sz`, I/O PSI | io_uring direct random I/O |
-| `network` | interface throughput, TCP saturation, drops | socket source/sink over a veth/netns path |
+| `cpu` | CPU utilization high; run queue, load, D-state evidence | busy compute worker, run-queue worker, or non-I/O kernel-wait worker |
+| `memory` | RSS high; memory PSI or swap pressure | large resident set or reclaim churn |
+| `disk` | device `%util` or `await`/`aqu-sz`, I/O PSI | io_uring direct random I/O |
+| `network` | interface throughput, TCP saturation, drops | draining or backpressured socket source/sink over a veth/netns path |
 
 Each scenario starts a fleet of 5–10 service-like processes. One runs the
 culprit profile above; the rest run a low-activity "baseline" (small resident

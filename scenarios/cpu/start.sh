@@ -7,12 +7,12 @@ source ../../scripts/lib.sh
 
 start_run "$((5 + RANDOM % 6))"
 CULPRIT="$(pick_random_service)"
-PROFILE_OPTIONS=(runq kernelwait)
+PROFILE_OPTIONS=(utilization runq kernelwait)
 PROFILE="${CPU_PROFILE:-random}"
 case "$PROFILE" in
   random) PROFILE="${PROFILE_OPTIONS[$((RANDOM % ${#PROFILE_OPTIONS[@]}))]}" ;;
-  runq|kernelwait) ;;
-  *) die "CPU_PROFILE must be 'runq', 'kernelwait', or 'random'." ;;
+  utilization|runq|kernelwait) ;;
+  *) die "CPU_PROFILE must be 'utilization', 'runq', 'kernelwait', or 'random'." ;;
 esac
 
 CPUS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
@@ -31,7 +31,54 @@ cap_count() {
   fi
 }
 
-if [ "$PROFILE" = "runq" ]; then
+if [ "$PROFILE" = "utilization" ]; then
+  require_workload_bin uworker
+
+  WORKERS="$CPUS"
+  WORKERS="$(cap_count "$WORKERS" 64)"
+  [ "$WORKERS" -lt 1 ] && WORKERS=1
+
+  cat > .env <<EOF
+RUN_ID=$RUN_ID
+CULPRIT=$CULPRIT
+PROFILE=$PROFILE
+CPUS=$CPUS
+WORKERS=$WORKERS
+SERVICES=${SERVICES[*]}
+EOF
+  echo "$RUN_ID" > .run-id
+
+  cat > .answer <<EOF
+Resource:  CPU
+Service:   $CULPRIT
+Profile:   CPU utilization without intentional run-queue backlog
+CPUs:      $CPUS
+Workers:   $WORKERS runnable busy threads
+Signal:    High CPU busy time; vmstat r should usually stay near CPU count rather than above it.
+Fleet:     ${SERVICES[*]}
+Process:   in-tree CPU worker ($WORKERS busy threads), running as '$CULPRIT'
+           The other services are baseline decoys (<1% CPU).
+Run ID:    $RUN_ID
+EOF
+
+  launch_workload uworker "$CULPRIT" "CPU utilization worker x$WORKERS" <<EOF
+mode=cpu
+workers=$WORKERS
+EOF
+  launch_baseline_fleet uworker "$CULPRIT"
+
+  echo "CPU scenario running. ${#SERVICES[@]} services are up; one is consuming CPU."
+  echo
+  echo "USE method starting points:"
+  echo "  Utilization: top / htop / mpstat -P ALL 1"
+  echo "  Saturation:  vmstat 1   (compare 'r' with logical CPU count)"
+  echo "  Errors:      dmesg or journalctl -k for hardware/thermal warnings"
+  echo
+  echo "Host drill-down (find which service is hot):"
+  echo "  ./use-practice status"
+  echo "  top -bcn1 w512"
+  echo "  ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head"
+elif [ "$PROFILE" = "runq" ]; then
   require_workload_bin uworker
 
   WORKERS=$((CPUS * (2 + RANDOM % 3) + RANDOM % CPUS))

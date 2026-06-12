@@ -1,10 +1,10 @@
 //! updisk is the generic Rust workload used by the disk scenario. Every service
 //! in that scenario runs this same binary; a config file picks its behavior:
 //!
-//!   * `mode=disk`     — keep `iodepth` direct (`O_DIRECT`) random I/O ops in
-//!                       flight via io_uring, producing the classic disk
-//!                       bottleneck signal (`%util` ~100%, `aqu-sz` > 1, rising
-//!                       `await`). This is the culprit.
+//!   * `mode=disk`     — issue direct (`O_DIRECT`) random I/O via io_uring.
+//!                       Scenario config chooses either a queue-depth-one
+//!                       utilization profile or a bursty high-depth saturation
+//!                       profile. This is the culprit.
 //!   * `mode=baseline` — a low-activity heartbeat (small resident set, sub-1%
 //!                       CPU, occasional tiny buffered I/O). These are the
 //!                       decoys the culprit hides among.
@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use io_uring::{opcode, types, IoUring};
 
@@ -211,12 +211,18 @@ fn run_disk(m: &HashMap<String, String>) {
     let bs = (get_int(m, "bs_k", 64).max(4) as usize) * 1024;
     let iodepth = get_int(m, "iodepth", 16).clamp(1, 256) as usize;
     let rw = get_str(m, "rw", "randwrite");
+    let burst_ms = get_int(m, "burst_ms", 0).max(0) as u64;
+    let pause_ms = get_int(m, "pause_ms", 0).max(0) as u64;
+    let burst = Duration::from_millis(burst_ms);
+    let pause = Duration::from_millis(pause_ms);
     let path = PathBuf::from(&file);
 
     prefill(&path, size).expect("prefill scratch file");
 
     let (f, direct) = open_target(&path);
-    println!("updisk rw={rw} bs={bs} iodepth={iodepth} direct={direct}");
+    println!(
+        "updisk rw={rw} bs={bs} iodepth={iodepth} burst_ms={burst_ms} pause_ms={pause_ms} direct={direct}"
+    );
     let fd = types::Fd(f.as_raw_fd());
 
     let nblocks = size / bs as u64;
@@ -224,6 +230,8 @@ fn run_disk(m: &HashMap<String, String>) {
 
     let mut ring = IoUring::new(iodepth as u32).expect("io_uring init");
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ std::process::id() as u64);
+    let duty_cycle = burst_ms > 0 && pause_ms > 0;
+    let mut cycle_started = Instant::now();
 
     let build_op = |slot: usize, rng: &mut Rng| -> io_uring::squeue::Entry {
         let off = (rng.next() % nblocks) * bs as u64;
@@ -275,5 +283,10 @@ fn run_disk(m: &HashMap<String, String>) {
             }
         }
         ring.submit().expect("resubmit");
+
+        if duty_cycle && cycle_started.elapsed() >= burst {
+            std::thread::sleep(pause);
+            cycle_started = Instant::now();
+        }
     }
 }

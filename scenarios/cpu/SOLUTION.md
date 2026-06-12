@@ -3,6 +3,9 @@
 ## Symptom
 One service creates CPU pressure. The exact profile varies by run:
 
+- `CPU utilization without intentional run-queue backlog`: busy workers keep
+  CPUs occupied, but worker count is capped near the logical CPU count so
+  `vmstat r` should usually not exceed CPU capacity.
 - `Runnable run-queue pressure`: many busy worker threads compete for CPU time.
 - `CPU burners plus non-I/O D-state kernel wait`: busy worker threads consume
   CPU while many peer threads block in an uninterruptible kernel wait caused by
@@ -13,7 +16,7 @@ One service creates CPU pressure. The exact profile varies by run:
 | Dimension    | Tool                      | What you should see                          |
 |--------------|---------------------------|----------------------------------------------|
 | Utilization  | `top`, `mpstat -P ALL 1`  | One or more cores near 100% in user time     |
-| Saturation   | `vmstat 1`                | `r` high for runnable backlog; `b` high for D-state wait |
+| Saturation   | `vmstat 1`                | Utilization profile: `r` near CPU count; run-queue profile: `r` above CPU count; kernel-wait profile: `b` high |
 | Load         | `uptime`, `/proc/loadavg` | Inflated by both runnable and D-state tasks  |
 | Errors       | `dmesg`, `journalctl -k`  | Usually none for workload-driven CPU pressure |
 
@@ -36,8 +39,11 @@ or futex contention would normally show as interruptible sleep instead.
 
 ## TSA paragraph
 
-The run-queue profile is Executing-dominant: the useful work is on CPU, and
-`vmstat r` should dominate.
+The utilization profile is Executing-dominant: useful work is on CPU, but it is
+not deliberately oversubscribed.
+
+The run-queue profile is also Executing-dominant, but with more runnable work
+than CPUs; `vmstat r` should exceed the logical CPU count.
 
 The kernel-wait profile is mixed. The CPU burner threads are Executing, while
 the waiter threads are Sleeping in a non-I/O kernel wait. Load average alone is
@@ -47,9 +53,9 @@ saturation.
 
 ## Why this is a USE problem
 
-High **utilization** plus a saturated runnable queue is the classic CPU-bound
-signature. High load with many `D` tasks needs more evidence: the CPU may still
-be busy, but part of the load is blocked kernel wait rather than runnable work.
-Fixes in real life depend on the dominant state: scale or profile hot code for
-Executing-heavy workloads; investigate the kernel wait site for D-state-heavy
-workloads.
+High CPU busy time is **utilization**. A runnable queue larger than CPU count is
+**saturation**. High load with many `D` tasks needs more evidence: the CPU may
+still be busy, but part of the load is blocked kernel wait rather than runnable
+work. Fixes in real life depend on the dominant state: profile hot code for
+utilization-only workloads, add CPU capacity or reduce concurrency for run-queue
+saturation, and investigate the kernel wait site for D-state-heavy workloads.
