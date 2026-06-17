@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Build the workload binaries into ./bin. The iximiuz image builds these the
-# same way in a multi-stage Docker build; this script is for local runs.
+# Build the dispatcher and workload binaries for local runs. The iximiuz image
+# builds these the same way in a multi-stage Docker build.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin="$root/bin"
 mkdir -p "$bin"
+
+echo "building Go dispatcher (use-practice)..."
+(
+  cd "$root"
+  rm -f "$root/use-practice"
+  CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$root/use-practice" ./cmd/use-practice
+)
 
 echo "building Go workload (uworker)..."
 (
@@ -22,5 +29,5 @@ echo "building Rust workloads (updisk, uwait)..."
   cp "$target_dir/release/uwait" "$bin/uwait"
 )
 
-echo "done -> $bin"
+echo "done -> $root/use-practice and $bin"
 ls -1 "$bin"

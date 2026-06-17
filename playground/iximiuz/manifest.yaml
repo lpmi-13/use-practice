@@ -48,6 +48,9 @@ playground:
               welcome: |
                 This VM is preloaded for USE-method investigation practice.
 
+                Open the practice command selector:
+                  use-practice
+
                 Start a random scenario:
                   use-practice run
 
@@ -64,7 +67,7 @@ playground:
                 application pressure. This VM is disposable; do not run these
                 workloads on a personal machine.
           drives:
-            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v4
+            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v5
               mount: /
               size: 30GiB
           network:

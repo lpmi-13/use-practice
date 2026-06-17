@@ -19,7 +19,7 @@ for cmd in iostat mpstat pidstat sar use-practice use-tool; do
   }
 done
 
-for workload in uworker updisk; do
+for workload in uworker updisk uwait; do
   [ -x "/opt/use-practice/bin/${workload}" ] || {
     echo "missing workload binary: ${workload}" >&2
     exit 1

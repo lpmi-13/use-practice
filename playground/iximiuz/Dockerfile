@@ -1,10 +1,16 @@
 # syntax=docker/dockerfile:1
 
-# Build the generic Go workload (cpu/memory/network + baseline). Stdlib only,
-# so no network access is needed at build time.
+# Build the Go dispatcher and generic Go workload (cpu/memory/network +
+# baseline). Both are stdlib-only, so no network access is needed at build time.
 FROM golang:1.24-bookworm AS gobuild
 ENV GOPROXY=off GOFLAGS=-mod=mod
-WORKDIR /src
+WORKDIR /src/use-practice
+COPY use-practice/go.mod ./
+COPY use-practice/cmd ./cmd
+COPY use-practice/internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/use-practice ./cmd/use-practice
+
+WORKDIR /src/loadgen/go
 COPY use-practice/loadgen/go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/uworker ./cmd/uworker
 
@@ -26,6 +32,7 @@ COPY use-practice /opt/use-practice
 COPY playground/iximiuz/image/bootstrap-use-practice.sh /opt/iximiuz-labs/bootstrap-use-practice.sh
 COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system/use-practice-bootstrap.service
 
+COPY --from=gobuild /out/use-practice /opt/use-practice/use-practice
 COPY --from=gobuild /out/uworker /opt/use-practice/bin/uworker
 COPY --from=rustbuild /out/updisk /opt/use-practice/bin/updisk
 COPY --from=rustbuild /out/uwait /opt/use-practice/bin/uwait
@@ -50,6 +57,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 rm -rf /var/lib/apt/lists/*
 
 chmod 755 /opt/use-practice/use-practice \
+  /opt/use-practice/use-practice.sh \
   /opt/use-practice/run.sh \
   /opt/use-practice/reveal.sh \
   /opt/use-practice/stop-all.sh \

@@ -16,9 +16,8 @@ scenarios/*/.rendered-role.yaml
 .tmp/
 __pycache__/
 
-use-practice
-
 # compiled workload binaries (built by scripts/build.sh or the image build)
 bin/
+/use-practice
 loadgen/rust/updisk/target/
 loadgen/rust/updisk/vendor/

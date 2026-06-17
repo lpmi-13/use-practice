@@ -109,9 +109,15 @@ state.
   workload uses `io_uring` direct I/O, so the backing filesystem must support
   `O_DIRECT` (it falls back to buffered I/O otherwise).
 
-The iximiuz rootfs build compiles the workload binaries (Go + Rust) in a
-multi-stage Docker build and ships them in the image. For local manual runs,
-build them first with:
+The `use-practice` CLI is a dispatcher for this repo layout, not a standalone
+single-binary distribution. It expects the scenario scripts under `scenarios/`,
+the shared Bash helpers under `scripts/`, and the service workload binaries in
+`./bin` to exist together. In the iximiuz lab image those pieces are packaged
+under `/opt/use-practice`; for local runs, build the workload binaries first.
+
+The iximiuz rootfs build compiles the dispatcher and workload binaries
+(Go + Rust) in a multi-stage Docker build and ships them in the image. For
+local manual runs, build them first with:
 
 ```bash
 bash scripts/build.sh   # needs the Go and Rust toolchains
@@ -120,33 +126,38 @@ bash scripts/build.sh   # needs the Go and Rust toolchains
 ## Quick Start
 
 ```bash
+# Open a selector for run, reveal, stop, list, or status.
+./use-practice
+
 # Open a selector for random, CPU, memory, disk, or network.
-# Choosing a concrete resource opens a second selector for its profile.
-./run.sh
+./use-practice run
 
 # Or target a specific resource directly, then choose its profile.
-./run.sh cpu
-./run.sh memory
-./run.sh disk
-./run.sh network
+./use-practice run cpu
+./use-practice run memory
+./use-practice run disk
+./use-practice run network
 
 # Keep the old blind-random behavior explicitly.
-./run.sh random
+./use-practice run random
 
+./use-practice reveal
+./use-practice stop
+```
+
+Compatibility wrappers are still available:
+
+```bash
+./run.sh [scenario|random]
 ./reveal.sh
 ./stop-all.sh
 ```
 
-The same commands are available through the dispatcher:
+The wrappers call the Go dispatcher when it has been built and fall back to the
+checked-in `use-practice.sh` shell dispatcher in a fresh checkout.
 
-```bash
-./use-practice run [scenario|random]
-./use-practice reveal
-./use-practice stop
-./use-practice list
-./use-practice status
-```
-
+Direct aliases also work: `./use-practice random`, `./use-practice cpu`,
+`./use-practice memory`, `./use-practice disk`, and `./use-practice network`.
 Running `./use-practice run` with no scenario opens the resource selector.
 Choosing `cpu`, `memory`, `disk`, or `network` opens a second selector for that
 resource's profiles, with `random` as the first option. In non-interactive
@@ -190,7 +201,7 @@ Build and optionally push the rootfs image:
 ```bash
 docker login ghcr.io
 
-IMAGE_TAG=v1 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
+IMAGE_TAG=v5 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
 ```
 
 This creates:
@@ -199,15 +210,28 @@ This creates:
 ghcr.io/lpmi-13/use-practice-rootfs:${IMAGE_TAG}
 ```
 
-The build script updates `playground/iximiuz/manifest.yaml` after a successful
-build. Verify the published image reference before creating or updating the
-playground:
+For local packaging validation without Docker, use:
+
+```bash
+DRY_RUN=1 bash scripts/build-rootfs-image.sh
+```
+
+For a local Docker image build without changing the checked-in manifest, set
+`UPDATE_MANIFEST=0`:
+
+```bash
+UPDATE_MANIFEST=0 ROOTFS_IMAGE=use-practice-rootfs:local bash scripts/build-rootfs-image.sh
+```
+
+By default, the build script updates `playground/iximiuz/manifest.yaml` after a
+successful build. Verify the published image reference before creating or
+updating the playground:
 
 ```bash
 grep -n "source: oci://" playground/iximiuz/manifest.yaml
 ```
 
-Then publish the custom playground:
+Publish or update the custom playground:
 
 ```bash
 labctl auth login
@@ -223,15 +247,32 @@ labctl playground update use-practice-5e9d1d9a \
   --force
 ```
 
+Start a live playground session from the manifest and run the lab smoke script
+with the session ID from `labctl playground start --quiet`:
+
+```bash
+labctl playground start use-practice-4ce4816f \
+  --file playground/iximiuz/manifest.yaml \
+  --quiet \
+  --safety-disclaimer-consent
+
+scripts/smoke-iximiuz-live.sh <playground-session-id>
+```
+
+The live smoke uses `labctl cp` and `labctl ssh` to validate the packaged
+dispatcher, selectors, `cpu -> kernelwait`, `disk -> saturation`,
+`network -> highload`, and `memory -> oom` in the actual iximiuz VM.
+
 The playground opens directly into `~/use-practice` as the `laborant` user.
-Use `./run.sh` to start a random scenario and `use-tool practice system` to
-investigate it.
+Use `use-practice` for the command selector, or `use-practice run` to start a
+scenario, then use `use-tool practice system` to investigate it.
 
 ## Layout
 
 ```text
 .
 |-- use-practice          # dispatcher
+|-- use-practice.sh       # temporary shell dispatcher fallback
 |-- run.sh                # compatibility wrapper for use-practice run
 |-- reveal.sh             # compatibility wrapper for use-practice reveal
 |-- stop-all.sh           # compatibility wrapper for use-practice stop
@@ -242,7 +283,7 @@ investigate it.
 |-- playground/
 |   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
 |-- scripts/
-|   |-- build.sh          # builds the workload binaries into ./bin
+|   |-- build.sh          # builds the dispatcher and workload binaries
 |   `-- lib.sh            # shared host-process runtime helpers
 `-- scenarios/
     |-- cpu/

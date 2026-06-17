@@ -8,6 +8,8 @@ source "${repo_root}/scripts/lib/versions.sh"
 image_tag="${IMAGE_TAG:-${DEFAULT_FIRST_PARTY_IMAGE_TAG}}"
 rootfs_image="${ROOTFS_IMAGE:-${ROOTFS_IMAGE_REPO}:${image_tag}}"
 push_rootfs_image="${PUSH_ROOTFS_IMAGE:-${PUSH_IMAGE:-0}}"
+dry_run="${DRY_RUN:-0}"
+update_manifest="${UPDATE_MANIFEST:-1}"
 
 if [[ "${rootfs_image}" == oci://* ]]; then
   rootfs_image="${rootfs_image#oci://}"
@@ -35,13 +37,16 @@ cp "${repo_root}/playground/iximiuz/Dockerfile" "${build_context}/Dockerfile"
 cp -R "${repo_root}/playground/iximiuz/image" "${build_context}/playground/iximiuz/"
 
 for item in \
+  cmd \
+  go.mod \
+  internal \
   loadgen \
   reveal.sh \
   run.sh \
   scenarios \
   scripts \
   stop-all.sh \
-  use-practice
+  use-practice.sh
 do
   copy_path "${repo_root}/${item}" "${build_context}/use-practice/${item}"
 done
@@ -55,6 +60,12 @@ find "${build_context}/use-practice" \
 
 echo "Rootfs package: ${ROOTFS_IMAGE_REPO}"
 echo "Rootfs image:   ${rootfs_image}"
+if [[ "${dry_run}" != "0" ]]; then
+  echo "Dry run: build context contents:"
+  find "${build_context}" -maxdepth 10 -type f | sort
+  exit 0
+fi
+
 echo "Building ${rootfs_image}..."
 docker build -t "${rootfs_image}" "${build_context}"
 
@@ -63,8 +74,12 @@ if [[ "${push_rootfs_image}" != "0" ]]; then
   docker push "${rootfs_image}"
 fi
 
-echo "Updating checked-in iximiuz manifest..."
-bash "${repo_root}/scripts/update-version-refs.sh" --rootfs-image "${rootfs_image}"
+if [[ "${update_manifest}" != "0" ]]; then
+  echo "Updating checked-in iximiuz manifest..."
+  bash "${repo_root}/scripts/update-version-refs.sh" --rootfs-image "${rootfs_image}"
+else
+  echo "Skipping checked-in iximiuz manifest update."
+fi
 
 echo
 echo "Built rootfs image ${rootfs_image}"
