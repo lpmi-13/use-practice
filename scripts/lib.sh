@@ -290,13 +290,26 @@ cleanup_network_state() {
   fi
 }
 
+cleanup_cgroup_state() {
+  local item
+  if [ -f .cgroups ]; then
+    while IFS= read -r item; do
+      [ -n "$item" ] || continue
+      if [ -d "$item" ]; then
+        rmdir "$item" >/dev/null 2>&1 || sudo -n rmdir "$item" >/dev/null 2>&1 || true
+      fi
+    done < .cgroups
+  fi
+}
+
 delete_scenario_resources() {
   stop_recorded_processes
   cleanup_network_state
+  cleanup_cgroup_state
   rm -rf .runtime .logs
   rm -f \
     .env .answer .run-id .pids .processes .netns .links \
-    .plan.sh .rendered.yaml .rendered-body.yaml .rendered-role.yaml
+    .cgroups .plan.sh .rendered.yaml .rendered-body.yaml .rendered-role.yaml
 }
 
 print_recorded_processes() {

@@ -53,12 +53,18 @@ r/b`, thread state, and wait-channel evidence. For targeted local testing, set
 `CPU_PROFILE=utilization`, `CPU_PROFILE=runq`, or `CPU_PROFILE=kernelwait`
 before running `./run.sh cpu`.
 
-The memory scenario also has two profiles. `resident` is utilization-focused:
+The memory scenario has three profiles. `resident` is utilization-focused:
 one service holds a large resident set with little expected ongoing reclaim
 after allocation settles. `pressure` keeps a large resident set and adds bounded
 anonymous mapping churn so learners can pair low available memory with PSI or
-swap activity. For targeted local testing, set `MEM_PROFILE=resident` or
-`MEM_PROFILE=pressure` before running `./run.sh memory`.
+swap activity. `oom` creates a cgroup v2 memory limit for the culprit child
+process, allocates beyond that limit, and restarts the child after each memcg
+OOM kill. The OOM profile defaults to a cgroup limit of 80% of current
+`MemAvailable`, while keeping at least 512 MB or 10% of host RAM outside the
+limit as host reserve. For targeted local testing, set `MEM_PROFILE=resident`,
+`MEM_PROFILE=pressure`, or `MEM_PROFILE=oom` before running `./run.sh memory`.
+The OOM profile can be tuned with `OOM_LIMIT_PCT` (10-90) and
+`OOM_RESERVE_MB`.
 
 The disk scenario has two profiles. `utilization` issues continuous
 queue-depth-one direct random I/O, keeping the backing device busy without
@@ -114,14 +120,18 @@ bash scripts/build.sh   # needs the Go and Rust toolchains
 ## Quick Start
 
 ```bash
-# Pick one at random; the resource type is hidden until reveal.
+# Open a selector for random, CPU, memory, disk, or network.
+# Choosing a concrete resource opens a second selector for its profile.
 ./run.sh
 
-# Or target a specific resource.
+# Or target a specific resource directly, then choose its profile.
 ./run.sh cpu
 ./run.sh memory
 ./run.sh disk
 ./run.sh network
+
+# Keep the old blind-random behavior explicitly.
+./run.sh random
 
 ./reveal.sh
 ./stop-all.sh
@@ -130,12 +140,17 @@ bash scripts/build.sh   # needs the Go and Rust toolchains
 The same commands are available through the dispatcher:
 
 ```bash
-./use-practice run [scenario]
+./use-practice run [scenario|random]
 ./use-practice reveal
 ./use-practice stop
 ./use-practice list
 ./use-practice status
 ```
+
+Running `./use-practice run` with no scenario opens the resource selector.
+Choosing `cpu`, `memory`, `disk`, or `network` opens a second selector for that
+resource's profiles, with `random` as the first option. In non-interactive
+shells both selectors fall back to `random` so automation does not block.
 
 ## Investigation Flow
 

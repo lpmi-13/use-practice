@@ -23,6 +23,10 @@ func runMem(c *cfg.Config) {
 	if mb < 1 {
 		mb = 1
 	}
+	startDelay := time.Duration(c.Int("start_delay_ms", 0)) * time.Millisecond
+	if startDelay > 0 {
+		time.Sleep(startDelay)
+	}
 	touch := time.Duration(c.Int("touch_ms", 1000)) * time.Millisecond
 	profile := c.Str("profile", "resident")
 
