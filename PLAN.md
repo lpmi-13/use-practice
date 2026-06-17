@@ -106,22 +106,130 @@ Each run should choose plausible service-like identities (`payments-api`,
 
 ## CLI Surface
 
-The shell-driver surface stays small:
+The dispatcher surface stays small:
 
 ```text
-use-practice run [scenario]    Start a scenario. No arg -> random, blind banner.
+use-practice                   Interactive subcommand selector.
+use-practice run [scenario]    Start a scenario. No arg -> resource selector.
 use-practice reveal            Print the answer for the active scenario.
 use-practice stop              Tear down the active scenario.
 use-practice list              List available scenarios.
 use-practice status            Show the active run ID and live workload PIDs.
 ```
 
-`use-practice run` with no argument should print host-level USE starting points
-and should encourage pairing with:
+`use-practice run cpu|memory|disk|network` opens a second selector for that
+resource's profile/scenario variant. `use-practice random` and
+`use-practice cpu|memory|disk|network` remain aliases for the corresponding
+`use-practice run ...` commands. Non-interactive selector paths fall back to
+`random` so automation does not block.
+
+Scenario output should continue to encourage pairing with:
 
 ```bash
 use-tool practice system
 ```
+
+## Go CLI Migration Progress
+
+The dispatcher migration is now in progress. The migration keeps the Bash
+scenario scripts and workload binaries as the runtime source of truth while
+replacing the top-level dispatcher with a Go CLI.
+
+Completed:
+
+- Documented the migration requirements in `GOLANG_CLI_MIGRATION_PLAN.md`,
+  including selector hierarchy, workload preservation, cleanup contracts, and
+  VM validation requirements.
+- Began implementation by preserving current behavior as the baseline before
+  introducing the Go dispatcher.
+- Added the Go dispatcher module, command entrypoint, selector-aware dispatch
+  logic, and unit tests for command selection, aliases, environment mapping,
+  blind random behavior, broad stop cleanup, status output, and reveal output.
+- Documented in `README.md` that the Go CLI is intentionally coupled to this
+  repo layout, scenario scripts, shared Bash helpers, and separate workload
+  binaries.
+- Removed the previous shell dispatcher and top-level compatibility wrappers
+  after live VM validation, leaving `use-practice` as the user-facing command.
+- Updated local build and iximiuz rootfs packaging to compile the Go dispatcher
+  as `use-practice` while continuing to package `uworker`, `updisk`, and
+  `uwait`.
+- Updated VM bootstrap readiness checks to require all three workload binaries:
+  `uworker`, `updisk`, and `uwait`.
+- Verified the Go unit tests, shell syntax for changed scripts, local build of
+  the dispatcher and workload binaries, and non-invasive CLI smoke checks for
+  `list`, `status`, and `--help`.
+- Added selector rendering/key-reader tests and verified top-level interactive
+  selection through a pseudo-terminal by selecting `list`.
+- Verified arrow-key navigation through a pseudo-terminal by moving the
+  top-level selector to `list` and selecting it.
+- Verified the run selector quit path through a pseudo-terminal; it exits 130
+  and leaves no active scenario.
+- Ran `go vet ./...` with no findings.
+- Added `DRY_RUN=1` support to `scripts/build-rootfs-image.sh` and verified the
+  generated rootfs build context includes the Go dispatcher source, scenario
+  scripts, Go workload source, and Rust workload source while excluding
+  generated `bin/` and `target/` artifacts.
+- Covered status redaction in Go tests, replacing the old shell compatibility
+  test.
+- Added and passed an ExecRunner-backed test that launches temporary scenario
+  shell scripts, verifies pre-run stop scripts are invoked, and confirms the
+  selected profile environment reaches the start script.
+- Built a local rootfs image as `use-practice-rootfs:cli-migration-local` with
+  `UPDATE_MANIFEST=0` and verified container-level smoke checks for
+  `/usr/local/bin/use-practice list`, `/usr/local/bin/use-practice status`, and
+  executable presence of `use-practice`, `uworker`, `updisk`, and `uwait`.
+- Ran bounded live scenario smokes inside the local rootfs container and cleaned
+  them up with `use-practice stop`: `cpu -> utilization`, `cpu -> kernelwait`
+  (`uwait`), `disk -> saturation` (`updisk`), and `network -> highload`
+  (`uworker`, loopback fallback in Docker).
+- Added `scripts/smoke-iximiuz-live.sh` and
+  `scripts/iximiuz-live-smoke-remote.sh` to run live remote lab validation via
+  `labctl ssh`/`labctl cp`.
+- Verified the live-smoke remote script inside the local rootfs container with
+  `WAIT_LAB_READY=0`, `RUN_MEMORY_OOM=0`, and `REQUIRE_NETWORK_VETH=0`, covering
+  safe CLI checks plus `cpu -> kernelwait`, `disk -> saturation`, and
+  `network -> highload`.
+- Re-ran `go test ./...`, `go vet ./...`, and shell syntax checks for the
+  changed Bash scripts after adding the `labctl` live-smoke workflow.
+- Built and pushed the migrated iximiuz rootfs image as
+  `ghcr.io/lpmi-13/use-practice-rootfs:v10`, updated the checked-in manifest and
+  version constants to point at it, and started a live remote iximiuz Labs VM
+  from that manifest with `labctl`.
+- Ran `scripts/smoke-iximiuz-live.sh 6a3284e92f2649649867fad5` successfully
+  against the live VM. This validated the browser-terminal selector path,
+  `cpu -> kernelwait`, `disk -> saturation`, `network -> highload` using a
+  veth/netns interface, and `memory -> oom` cgroup `oom_kill` behavior.
+- Stopped the validation playground after the smoke passed.
+- Pushed the updated manifest permanently to iximiuz with
+  `labctl playground update use-practice-4ce4816f --file playground/iximiuz/manifest.yaml --force`
+  and verified the hosted manifest now references
+  `oci://ghcr.io/lpmi-13/use-practice-rootfs:v10`.
+- Removed top-level compatibility wrappers and per-scenario reveal shims from
+  the repo and remote image. The rootfs now exposes only `/usr/local/bin/use-practice`
+  as the user-facing command, symlinked to the Go dispatcher under
+  `/opt/use-practice`, with `USE_PRACTICE_ROOT=/opt/use-practice`.
+- Removed additional low-value shell helpers: `scripts/push-images.sh`,
+  `scripts/test-status-output.sh`, `scripts/wait-lab-ready.sh`,
+  `scripts/update-version-refs.sh`, `scripts/lib/versions.sh`, and the
+  separate VM bootstrap script. Readiness waiting now lives in the manifest and
+  live-smoke script, the bootstrap checks live directly in the systemd unit, and
+  rootfs manifest/default-tag updates are handled by `scripts/build-rootfs-image.sh`.
+- Fixed rootfs packaging so image metadata, local default tag state, and the
+  manifest stay aligned on the same rootfs tag before Docker builds.
+- Reduced the remote rootfs further by packaging only `scripts/lib.sh` under
+  `/opt/use-practice/scripts`; local build/deploy/smoke scripts are no longer
+  present in the lab VM image.
+- Built and pushed `ghcr.io/lpmi-13/use-practice-rootfs:v10`, verified in a
+  container that the remote image contains only `scripts/lib.sh` under
+  `/opt/use-practice/scripts`, passed the full live iximiuz smoke against
+  playground session `6a331b491fbb21764a69674e`, stopped that validation
+  playground, and pushed the `v10` manifest permanently to iximiuz.
+
+Remaining:
+
+- No known migration blockers. The remaining shell scripts are scenario runtime,
+  build, deployment, and smoke-test internals; the local and remote user-facing
+  command surface is `use-practice`.
 
 ## Implementation Shape
 

@@ -17,6 +17,8 @@ It is possible to run the scenarios on your own Linux system, but it is not
 advised. Use a disposable VM where losing local state or temporarily degrading
 the machine is acceptable.
 
+You can currently run this on [iximiuz Labs](https://labs.iximiuz.com/playgrounds/use-practice-4ce4816f) on the free tier!
+
 ## Scenarios
 
 | Scenario | Workload | Primary signal |
@@ -44,43 +46,63 @@ is byte-identical to the decoys. Each run also chooses a fresh run ID, and blind
 runs avoid naming the resource type, so the exercise is solved by following the
 system signals rather than by pattern-matching names.
 
-The CPU scenario has three profiles. `utilization` keeps CPUs busy without
-intentionally creating a runnable backlog. `runq` creates ordinary runnable
-run-queue pressure with more busy workers than CPUs. `kernelwait` combines CPU
-burners with many threads blocked in a non-I/O uninterruptible kernel wait
-(`vfork`), so learners can see why load average must be paired with `vmstat
-r/b`, thread state, and wait-channel evidence. For targeted local testing, set
-run `use-practice run cpu` and choose `utilization`, `runq`, or
-`kernelwait` from the profile selector.
+### Scenario Profiles
 
-The memory scenario has three profiles. `resident` is utilization-focused:
-one service holds a large resident set with little expected ongoing reclaim
-after allocation settles. `pressure` keeps a large resident set and adds bounded
-anonymous mapping churn so learners can pair low available memory with PSI or
-swap activity. `oom` creates a cgroup v2 memory limit for the culprit child
-process, allocates beyond that limit, and restarts the child after each memcg
-OOM kill. The OOM profile defaults to a cgroup limit of 80% of current
-`MemAvailable`, while keeping at least 512 MB or 10% of host RAM outside the
-limit as host reserve. For targeted local testing, run
-`use-practice run memory` and choose `resident`, `pressure`, or `oom` from
-the profile selector. The OOM profile can be tuned with `OOM_LIMIT_PCT` (10-90)
-and `OOM_RESERVE_MB`.
+**CPU** has three profiles:
 
-The disk scenario has two profiles. `utilization` issues continuous
-queue-depth-one direct random I/O, keeping the backing device busy without
-building a large sustained queue. `saturation` issues short high-depth I/O
-bursts separated by idle gaps so queue depth and await spike without sustained
-full-device busy time, exposing queueing that `%util` alone would miss. For
-targeted local testing, run `use-practice run disk` and choose
+- `utilization`: keeps CPUs busy without intentionally creating a runnable backlog.
+
+- `runq`: creates ordinary runnable run-queue pressure with more busy workers
+  than CPUs.
+
+- `kernelwait`: combines CPU burners with many threads blocked in a non-I/O
+  uninterruptible kernel wait (`vfork`), so learners can see why load average
+  must be paired with `vmstat r/b`, thread state, and wait-channel evidence.
+
+For targeted local testing, run `use-practice run cpu` and choose
+`utilization`, `runq`, or `kernelwait` from the profile selector.
+
+**Memory** has three profiles:
+
+- `resident`: one service holds a large resident set with little expected
+  ongoing reclaim after allocation settles.
+
+- `pressure`: keeps a large resident set and adds bounded anonymous mapping
+  churn so learners can pair low available memory with PSI or swap activity.
+
+- `oom`: creates a cgroup v2 memory limit for the culprit child process,
+  allocates beyond that limit, and restarts the child after each memcg OOM kill.
+  The OOM profile defaults to a cgroup limit of 80% of current `MemAvailable`,
+  while keeping at least 512 MB or 10% of host RAM outside the limit as host
+  reserve. Tune it with `OOM_LIMIT_PCT` (10-90) and `OOM_RESERVE_MB`.
+
+For targeted local testing, run `use-practice run memory` and choose
+`resident`, `pressure`, or `oom` from the profile selector.
+
+**Disk** has two profiles:
+
+- `utilization`: issues continuous queue-depth-one direct random I/O, keeping
+  the backing device busy without building a large sustained queue.
+
+- `saturation`: issues short high-depth I/O bursts separated by idle gaps so
+  queue depth and await spike without sustained full-device busy time, exposing
+  queueing that `%util` alone would miss.
+
+For targeted local testing, run `use-practice run disk` and choose
 `utilization` or `saturation` from the profile selector.
 
-The network scenario has three profiles. `utilization` sends steady
-high-throughput TCP to a draining sink. `saturation` uses a slow-reading TCP
-sink to create socket backpressure without high actual throughput. `highload`
-keeps the original offered-load TCP/UDP behavior where utilization and
-saturation can appear together. For targeted local testing, run
-`use-practice run network` and choose `utilization`, `saturation`, or
-`highload` from the profile selector.
+**Network** has three profiles:
+
+- `utilization`: sends steady high-throughput TCP to a draining sink.
+
+- `saturation`: uses a slow-reading TCP sink to create socket backpressure
+  without high actual throughput.
+
+- `highload`: keeps the original offered-load TCP/UDP behavior where
+  utilization and saturation can appear together.
+
+For targeted local testing, run `use-practice run network` and choose
+`utilization`, `saturation`, or `highload` from the profile selector.
 
 ### Why There Is No CPU "Errors" Scenario
 
