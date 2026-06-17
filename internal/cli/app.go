@@ -228,7 +228,7 @@ func (a *App) stopAll(quiet bool) int {
 func (a *App) reveal() int {
 	pick, ok := a.activeScenario()
 	if !ok {
-		fmt.Fprintln(a.Out, "No active scenario. Start one with ./run.sh")
+		fmt.Fprintln(a.Out, "No active scenario. Start one with use-practice run")
 		return 1
 	}
 	answerPath := filepath.Join(a.Root, "scenarios", pick, ".answer")
@@ -306,12 +306,12 @@ func (a *App) list() {
 
 func (a *App) usage() {
 	fmt.Fprint(a.Out, `Usage:
-  ./use-practice
-  ./use-practice run [scenario|random]
-  ./use-practice reveal
-  ./use-practice stop
-  ./use-practice list
-  ./use-practice status
+  use-practice
+  use-practice run [scenario|random]
+  use-practice reveal
+  use-practice stop
+  use-practice list
+  use-practice status
 
 Scenarios:
   random cpu memory disk network
@@ -331,7 +331,7 @@ Companion CLI:
   use-tool practice system
 
 Process/service attribution:
-  ./use-practice status
+  use-practice status
   top -bcn1 w512
   top -H -bcn1 w512
   ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head
@@ -339,8 +339,8 @@ Process/service attribution:
   pidstat 1
 
 When you have an answer:
-  ./reveal.sh        # prints what was actually wrong
-  ./stop-all.sh      # tear everything down
+  use-practice reveal
+  use-practice stop
 `)
 }
 

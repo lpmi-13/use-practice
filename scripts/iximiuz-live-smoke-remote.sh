@@ -38,6 +38,14 @@ need_executable() {
   }
 }
 
+need_absent() {
+  local path="$1"
+  [ ! -e "$path" ] || {
+    echo "unexpected removed wrapper still present: $path" >&2
+    exit 1
+  }
+}
+
 need_pattern() {
   local pattern="$1"
   local path="$2"
@@ -58,23 +66,56 @@ run_tty() {
   printf '%b' "$keys" | script -qfec "$*" /dev/null
 }
 
+wait_ready() {
+  local timeout_seconds="${USE_PRACTICE_READY_TIMEOUT_SECONDS:-240}"
+  local deadline=$((SECONDS + timeout_seconds))
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    [ -f /var/lib/use-practice/ready ] && return 0
+    sleep 2
+  done
+
+  echo "use-practice lab did not become ready within ${timeout_seconds}s" >&2
+  systemctl status use-practice-bootstrap.service --no-pager >&2 || true
+  return 1
+}
+
 log "readiness"
-need_executable scripts/wait-lab-ready.sh
 if [ "$wait_lab_ready" != "0" ]; then
-  scripts/wait-lab-ready.sh
+  wait_ready
 fi
 
 for path in \
   ./use-practice \
-  ./use-practice.sh \
-  ./run.sh \
-  ./reveal.sh \
-  ./stop-all.sh \
+  /usr/local/bin/use-practice \
   ./bin/uworker \
   ./bin/updisk \
   ./bin/uwait
 do
   need_executable "$path"
+done
+
+for path in \
+  ./use-practice.sh \
+  ./run.sh \
+  ./reveal.sh \
+  ./stop-all.sh \
+  scenarios/cpu/reveal.sh \
+  scenarios/memory/reveal.sh \
+  scenarios/disk/reveal.sh \
+  scenarios/network/reveal.sh \
+  scripts/wait-lab-ready.sh \
+  scripts/push-images.sh \
+  scripts/test-status-output.sh \
+  scripts/update-version-refs.sh \
+  scripts/lib/versions.sh \
+  scripts/build.sh \
+  scripts/build-rootfs-image.sh \
+  scripts/smoke-iximiuz-live.sh \
+  scripts/iximiuz-live-smoke-remote.sh \
+  /opt/iximiuz-labs/bootstrap-use-practice.sh
+do
+  need_absent "$path"
 done
 
 for path in \

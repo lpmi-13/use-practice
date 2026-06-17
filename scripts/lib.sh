@@ -335,8 +335,8 @@ print_recorded_processes() {
 print_host_footer() {
   cat <<EOF
 
-Status: ./use-practice status
-Stop:   ./stop.sh
-Reveal: ./reveal.sh
+Status: use-practice status
+Stop:   use-practice stop
+Reveal: use-practice reveal
 EOF
 }

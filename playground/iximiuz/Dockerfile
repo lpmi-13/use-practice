@@ -29,7 +29,6 @@ USER root
 ENV HOME=/root
 
 COPY use-practice /opt/use-practice
-COPY playground/iximiuz/image/bootstrap-use-practice.sh /opt/iximiuz-labs/bootstrap-use-practice.sh
 COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system/use-practice-bootstrap.service
 
 COPY --from=gobuild /out/use-practice /opt/use-practice/use-practice
@@ -56,13 +55,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   sysstat
 rm -rf /var/lib/apt/lists/*
 
-chmod 755 /opt/use-practice/use-practice \
-  /opt/use-practice/use-practice.sh \
-  /opt/use-practice/run.sh \
-  /opt/use-practice/reveal.sh \
-  /opt/use-practice/stop-all.sh \
-  /opt/use-practice/scripts/wait-lab-ready.sh \
-  /opt/iximiuz-labs/bootstrap-use-practice.sh
+chmod 755 /opt/use-practice/use-practice
 chmod 755 /opt/use-practice/bin/uworker \
   /opt/use-practice/bin/updisk \
   /opt/use-practice/bin/uwait
@@ -78,34 +71,7 @@ if id laborant >/dev/null 2>&1; then
   grep -qxF 'cd ~/use-practice' /home/laborant/.bashrc || echo 'cd ~/use-practice' >> /home/laborant/.bashrc
 fi
 
-cat > /usr/local/bin/use-practice <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-cd /opt/use-practice
-exec ./use-practice "$@"
-EOS
-cat > /usr/local/bin/use-practice-run <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-cd /opt/use-practice
-exec ./run.sh "$@"
-EOS
-cat > /usr/local/bin/use-practice-reveal <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-cd /opt/use-practice
-exec ./reveal.sh "$@"
-EOS
-cat > /usr/local/bin/use-practice-stop <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-cd /opt/use-practice
-exec ./stop-all.sh "$@"
-EOS
-chmod 755 /usr/local/bin/use-practice \
-  /usr/local/bin/use-practice-run \
-  /usr/local/bin/use-practice-reveal \
-  /usr/local/bin/use-practice-stop
+ln -sf /opt/use-practice/use-practice /usr/local/bin/use-practice
 
 for cmd in bash curl ip jq use-practice vmstat; do
   command -v "${cmd}" >/dev/null 2>&1 || {
@@ -127,3 +93,4 @@ EOF
 
 USER laborant
 ENV HOME=/home/laborant
+ENV USE_PRACTICE_ROOT=/opt/use-practice

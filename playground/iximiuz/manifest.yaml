@@ -67,7 +67,7 @@ playground:
                 application pressure. This VM is disposable; do not run these
                 workloads on a personal machine.
           drives:
-            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v5
+            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v10
               mount: /
               size: 30GiB
           network:
@@ -96,8 +96,7 @@ playground:
                 install_use_tool_latest() {
                   local release_repo tag version arch asset base_url tmp
 
-                  source /opt/use-practice/scripts/lib/versions.sh
-                  release_repo="${USE_TOOL_RELEASE_REPO}"
+                  release_repo="lpmi-13/use-tool"
 
                   case "$(uname -m)" in
                     amd64|x86_64) arch="amd64" ;;
@@ -124,7 +123,16 @@ playground:
                 install_use_tool_latest
                 systemctl reset-failed use-practice-bootstrap.service || true
                 systemctl restart use-practice-bootstrap.service
-                /opt/use-practice/scripts/wait-lab-ready.sh
+
+                deadline=$((SECONDS + 240))
+                while [ "$SECONDS" -lt "$deadline" ]; do
+                  [ -f /var/lib/use-practice/ready ] && exit 0
+                  sleep 2
+                done
+
+                echo "use-practice lab did not become ready within 240s" >&2
+                systemctl status use-practice-bootstrap.service --no-pager >&2 || true
+                exit 1
     accessControl:
         canList:
             - anyone

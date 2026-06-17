@@ -50,8 +50,8 @@ run-queue pressure with more busy workers than CPUs. `kernelwait` combines CPU
 burners with many threads blocked in a non-I/O uninterruptible kernel wait
 (`vfork`), so learners can see why load average must be paired with `vmstat
 r/b`, thread state, and wait-channel evidence. For targeted local testing, set
-`CPU_PROFILE=utilization`, `CPU_PROFILE=runq`, or `CPU_PROFILE=kernelwait`
-before running `./run.sh cpu`.
+run `use-practice run cpu` and choose `utilization`, `runq`, or
+`kernelwait` from the profile selector.
 
 The memory scenario has three profiles. `resident` is utilization-focused:
 one service holds a large resident set with little expected ongoing reclaim
@@ -61,26 +61,26 @@ swap activity. `oom` creates a cgroup v2 memory limit for the culprit child
 process, allocates beyond that limit, and restarts the child after each memcg
 OOM kill. The OOM profile defaults to a cgroup limit of 80% of current
 `MemAvailable`, while keeping at least 512 MB or 10% of host RAM outside the
-limit as host reserve. For targeted local testing, set `MEM_PROFILE=resident`,
-`MEM_PROFILE=pressure`, or `MEM_PROFILE=oom` before running `./run.sh memory`.
-The OOM profile can be tuned with `OOM_LIMIT_PCT` (10-90) and
-`OOM_RESERVE_MB`.
+limit as host reserve. For targeted local testing, run
+`use-practice run memory` and choose `resident`, `pressure`, or `oom` from
+the profile selector. The OOM profile can be tuned with `OOM_LIMIT_PCT` (10-90)
+and `OOM_RESERVE_MB`.
 
 The disk scenario has two profiles. `utilization` issues continuous
 queue-depth-one direct random I/O, keeping the backing device busy without
 building a large sustained queue. `saturation` issues short high-depth I/O
 bursts separated by idle gaps so queue depth and await spike without sustained
 full-device busy time, exposing queueing that `%util` alone would miss. For
-targeted local testing, set `DISK_PROFILE=utilization` or
-`DISK_PROFILE=saturation` before running `./run.sh disk`.
+targeted local testing, run `use-practice run disk` and choose
+`utilization` or `saturation` from the profile selector.
 
 The network scenario has three profiles. `utilization` sends steady
 high-throughput TCP to a draining sink. `saturation` uses a slow-reading TCP
 sink to create socket backpressure without high actual throughput. `highload`
 keeps the original offered-load TCP/UDP behavior where utilization and
-saturation can appear together. For targeted local testing, set
-`NETWORK_PROFILE=utilization`, `NETWORK_PROFILE=saturation`, or
-`NETWORK_PROFILE=highload` before running `./run.sh network`.
+saturation can appear together. For targeted local testing, run
+`use-practice run network` and choose `utilization`, `saturation`, or
+`highload` from the profile selector.
 
 ### Why There Is No CPU "Errors" Scenario
 
@@ -114,6 +114,8 @@ single-binary distribution. It expects the scenario scripts under `scenarios/`,
 the shared Bash helpers under `scripts/`, and the service workload binaries in
 `./bin` to exist together. In the iximiuz lab image those pieces are packaged
 under `/opt/use-practice`; for local runs, build the workload binaries first.
+The remote VM exposes `use-practice` as the user-facing command; the remaining
+shell scripts are scenario/runtime internals.
 
 The iximiuz rootfs build compiles the dispatcher and workload binaries
 (Go + Rust) in a multi-stage Docker build and ships them in the image. For
@@ -127,38 +129,27 @@ bash scripts/build.sh   # needs the Go and Rust toolchains
 
 ```bash
 # Open a selector for run, reveal, stop, list, or status.
-./use-practice
+use-practice
 
 # Open a selector for random, CPU, memory, disk, or network.
-./use-practice run
+use-practice run
 
 # Or target a specific resource directly, then choose its profile.
-./use-practice run cpu
-./use-practice run memory
-./use-practice run disk
-./use-practice run network
+use-practice run cpu
+use-practice run memory
+use-practice run disk
+use-practice run network
 
 # Keep the old blind-random behavior explicitly.
-./use-practice run random
+use-practice run random
 
-./use-practice reveal
-./use-practice stop
+use-practice reveal
+use-practice stop
 ```
 
-Compatibility wrappers are still available:
-
-```bash
-./run.sh [scenario|random]
-./reveal.sh
-./stop-all.sh
-```
-
-The wrappers call the Go dispatcher when it has been built and fall back to the
-checked-in `use-practice.sh` shell dispatcher in a fresh checkout.
-
-Direct aliases also work: `./use-practice random`, `./use-practice cpu`,
-`./use-practice memory`, `./use-practice disk`, and `./use-practice network`.
-Running `./use-practice run` with no scenario opens the resource selector.
+Direct aliases also work: `use-practice random`, `use-practice cpu`,
+`use-practice memory`, `use-practice disk`, and `use-practice network`.
+Running `use-practice run` with no scenario opens the resource selector.
 Choosing `cpu`, `memory`, `disk`, or `network` opens a second selector for that
 resource's profiles, with `random` as the first option. In non-interactive
 shells both selectors fall back to `random` so automation does not block.
@@ -176,11 +167,11 @@ shells both selectors fall back to `random` so automation does not block.
 3. Pivot from the resource signal to the responsible process or service-like
    workload using normal host tools such as `top`, `ps`, `pidstat`, `iotop`,
    `ss`, or the relevant profiler.
-4. Use `./use-practice status` if you need the active run ID and live
+4. Use `use-practice status` if you need the active run ID and live
    PID/service inventory without revealing the resource type.
-5. Use `./reveal.sh` to see the answer and the scenario's `SOLUTION.md` for
-   the walkthrough.
-6. Use `./stop-all.sh` when finished.
+5. Use `use-practice reveal` to see the answer and the scenario's
+   `SOLUTION.md` for the walkthrough.
+6. Use `use-practice stop` when finished.
 
 ## iximiuz Deployment
 
@@ -201,7 +192,7 @@ Build and optionally push the rootfs image:
 ```bash
 docker login ghcr.io
 
-IMAGE_TAG=v5 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
+IMAGE_TAG=v10 PUSH_ROOTFS_IMAGE=1 bash scripts/build-rootfs-image.sh
 ```
 
 This creates:
@@ -271,11 +262,8 @@ scenario, then use `use-tool practice system` to investigate it.
 
 ```text
 .
-|-- use-practice          # dispatcher
-|-- use-practice.sh       # temporary shell dispatcher fallback
-|-- run.sh                # compatibility wrapper for use-practice run
-|-- reveal.sh             # compatibility wrapper for use-practice reveal
-|-- stop-all.sh           # compatibility wrapper for use-practice stop
+|-- cmd/use-practice/     # Go dispatcher entrypoint
+|-- internal/cli/         # command parsing, selectors, and dispatch
 |-- bin/                  # compiled workload binaries (built, git-ignored)
 |-- loadgen/
 |   |-- go/               # uworker: cpu/memory/network + baseline (Go)
@@ -283,7 +271,10 @@ scenario, then use `use-tool practice system` to investigate it.
 |-- playground/
 |   `-- iximiuz/          # playground manifest, rootfs Dockerfile, bootstrap unit
 |-- scripts/
-|   |-- build.sh          # builds the dispatcher and workload binaries
+|   |-- build.sh          # builds the dispatcher and workload binaries locally
+|   |-- build-rootfs-image.sh
+|   |-- smoke-iximiuz-live.sh
+|   |-- iximiuz-live-smoke-remote.sh
 |   `-- lib.sh            # shared host-process runtime helpers
 `-- scenarios/
     |-- cpu/
