@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
 default_rootfs_image_repo="ghcr.io/lpmi-13/use-practice-rootfs"
-default_first_party_image_tag="v10"
+default_first_party_image_tag="v11"
 
 rootfs_image_repo="${ROOTFS_IMAGE_REPO:-${default_rootfs_image_repo}}"
 image_tag="${IMAGE_TAG:-${default_first_party_image_tag}}"

@@ -67,7 +67,7 @@ playground:
                 application pressure. This VM is disposable; do not run these
                 workloads on a personal machine.
           drives:
-            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v10
+            - source: oci://ghcr.io/lpmi-13/use-practice-rootfs:v11
               mount: /
               size: 30GiB
           network:
