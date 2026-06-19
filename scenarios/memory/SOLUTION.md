@@ -41,8 +41,10 @@ churn cycle.
 
 For the OOM profile, the culprit supervisor remains alive while child workers
 are killed and restarted. `./use-practice status` shows the service as running,
-while the cgroup recorded in `scenarios/memory/.env` has a persistently
-increasing `memory.events` `oom_kill` counter. By default, the cgroup
+while the cgroup recorded in the memory scenario state `.env` has a
+persistently increasing `memory.events` `oom_kill` counter. In the packaged lab
+that state file is under `/var/lib/use-practice/state/memory`; in a local
+checkout it remains under `scenarios/memory`. By default, the cgroup
 `memory.max` is 80% of `MemAvailable`, capped so at least 512 MB or 10% of host
 RAM remains outside the limit as host reserve.
 

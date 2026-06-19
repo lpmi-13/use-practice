@@ -30,6 +30,7 @@ ENV HOME=/root
 
 COPY use-practice /opt/use-practice
 COPY playground/iximiuz/image/use-practice-bootstrap.service /etc/systemd/system/use-practice-bootstrap.service
+COPY playground/iximiuz/image/use-practice-privileged /tmp/use-practice-privileged
 
 COPY --from=gobuild /out/use-practice /opt/use-practice/use-practice
 COPY --from=gobuild /out/uworker /opt/use-practice/bin/uworker
@@ -59,21 +60,31 @@ chmod 755 /opt/use-practice/use-practice
 chmod 755 /opt/use-practice/bin/uworker \
   /opt/use-practice/bin/updisk \
   /opt/use-practice/bin/uwait
+install -D -m 0755 /tmp/use-practice-privileged /usr/local/libexec/use-practice-privileged
+rm -f /tmp/use-practice-privileged
 find /opt/use-practice/scenarios -name '*.sh' -exec chmod 755 {} +
 
 if id laborant >/dev/null 2>&1; then
-  chown -R laborant:laborant /opt/use-practice
+  chown -R root:root /opt/use-practice
+  install -d -m 0755 /var/lib/use-practice
+  install -d -o laborant -g laborant -m 0755 /var/lib/use-practice/state
   ln -sfn /opt/use-practice /home/laborant/use-practice
   chown -h laborant:laborant /home/laborant/use-practice
-  printf 'laborant ALL=(root) NOPASSWD: /usr/sbin/ip, /usr/bin/ip, /usr/bin/tee, /usr/bin/kill\n' \
+  printf 'laborant ALL=(root) NOPASSWD: /usr/local/libexec/use-practice-privileged *\n' \
     > /etc/sudoers.d/use-practice
   chmod 0440 /etc/sudoers.d/use-practice
   grep -qxF 'cd ~/use-practice' /home/laborant/.bashrc || echo 'cd ~/use-practice' >> /home/laborant/.bashrc
 fi
 
-ln -sf /opt/use-practice/use-practice /usr/local/bin/use-practice
+cat > /usr/local/bin/use-practice <<'EOF_WRAPPER'
+#!/usr/bin/env bash
+export USE_PRACTICE_ROOT=/opt/use-practice
+export USE_PRACTICE_STATE_DIR=/var/lib/use-practice/state
+exec /opt/use-practice/use-practice "$@"
+EOF_WRAPPER
+chmod 755 /usr/local/bin/use-practice
 
-for cmd in bash curl ip jq use-practice vmstat; do
+for cmd in bash curl ip jq setpriv use-practice vmstat; do
   command -v "${cmd}" >/dev/null 2>&1 || {
     echo "missing expected tool: ${cmd}" >&2
     exit 1
@@ -94,3 +105,4 @@ EOF
 USER laborant
 ENV HOME=/home/laborant
 ENV USE_PRACTICE_ROOT=/opt/use-practice
+ENV USE_PRACTICE_STATE_DIR=/var/lib/use-practice/state

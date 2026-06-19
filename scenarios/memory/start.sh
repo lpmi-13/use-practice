@@ -14,8 +14,8 @@ cgroup_write() {
     printf '%s\n' "$value" > "$path"
     return 0
   fi
-  command -v sudo >/dev/null 2>&1 || return 1
-  printf '%s\n' "$value" | sudo -n tee "$path" >/dev/null
+  have_priv_helper || return 1
+  run_priv_helper cgroup-write "$path" "$value"
 }
 
 start_run "$((5 + RANDOM % 6))"
@@ -41,15 +41,15 @@ if [ "$PROFILE" = "oom" ]; then
   if ! grep -qw memory "$CGROUP_ROOT/cgroup.subtree_control"; then
     if [ -w "$CGROUP_ROOT/cgroup.subtree_control" ]; then
       printf '+memory\n' > "$CGROUP_ROOT/cgroup.subtree_control" 2>/dev/null || true
-    elif command -v sudo >/dev/null 2>&1; then
-      printf '+memory\n' | sudo -n tee "$CGROUP_ROOT/cgroup.subtree_control" >/dev/null 2>&1 || true
+    elif have_priv_helper; then
+      run_priv_helper cgroup-write "$CGROUP_ROOT/cgroup.subtree_control" '+memory' >/dev/null 2>&1 || true
     fi
   fi
 
   CGROUP_DIR="$CGROUP_ROOT/use-practice-$RUN_ID-$CULPRIT-oom"
   if ! mkdir "$CGROUP_DIR" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1 && sudo -n mkdir "$CGROUP_DIR" 2>/dev/null; then
-      sudo -n chown "$(id -u):$(id -g)" "$CGROUP_DIR" || die "failed to chown $CGROUP_DIR."
+    if have_priv_helper && run_priv_helper cgroup-create "$CGROUP_DIR" "$(id -u)" "$(id -g)" 2>/dev/null; then
+      :
     else
       die "MEM_PROFILE=oom requires permission to create $CGROUP_DIR."
     fi
@@ -222,10 +222,12 @@ start_delay_ms=750
 CFG
   UP_CFG="'"$CFG_PATH"'" "'"$ACTIVE_BIN"'" &
   child=$!
-  if [ -w "'"$CGROUP_DIR"'/cgroup.procs" ]; then
-    printf "%s\n" "$child" > "'"$CGROUP_DIR"'/cgroup.procs" || exit 90
-  else
-    printf "%s\n" "$child" | sudo -n tee "'"$CGROUP_DIR"'/cgroup.procs" >/dev/null || exit 90
+  if ! printf "%s\n" "$child" > "'"$CGROUP_DIR"'/cgroup.procs" 2>/dev/null; then
+    if [ "$(id -u)" = "0" ]; then
+      "'"$PRIV_HELPER"'" cgroup-write "'"$CGROUP_DIR"'/cgroup.procs" "$child" || exit 90
+    else
+      sudo -n "'"$PRIV_HELPER"'" cgroup-write "'"$CGROUP_DIR"'/cgroup.procs" "$child" || exit 90
+    fi
   fi
   rc=0
   wait "$child" >/dev/null 2>&1 || rc=$?

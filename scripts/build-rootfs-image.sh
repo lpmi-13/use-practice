@@ -61,7 +61,7 @@ find "${build_context}/use-practice" \
   \( -name .runtime -o -name .logs -o -name __pycache__ -o -name target -o -name bin \) \
   -prune -exec rm -rf {} +
 find "${build_context}/use-practice" \
-  \( -name .env -o -name .answer -o -name .run-id -o -name .pids -o -name .processes -o -name .netns -o -name .links \) \
+  \( -name .env -o -name .answer -o -name .run-id -o -name .pids -o -name .processes -o -name .netns -o -name .links -o -name .cgroups \) \
   -type f -delete
 
 echo "Rootfs package: ${rootfs_image_repo}"

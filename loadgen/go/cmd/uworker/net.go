@@ -12,7 +12,7 @@ import (
 // sink the netclient culprit talks to.
 func runNetServer(c *cfg.Config) {
 	proto := c.Str("proto", "tcp")
-	addr := ":" + c.Str("port", "5201")
+	addr := net.JoinHostPort(c.Str("listen_host", ""), c.Str("port", "5201"))
 	readBPS := c.Int("read_bps", 0)
 	readBuf := c.Int("read_buf", 0)
 

@@ -13,14 +13,15 @@ import (
 )
 
 type App struct {
-	Root     string
-	In       io.Reader
-	Out      io.Writer
-	Err      io.Writer
-	Runner   Runner
-	Selector SelectorFunc
-	Random   *rand.Rand
-	PIDAlive func(string) bool
+	Root      string
+	StateRoot string
+	In        io.Reader
+	Out       io.Writer
+	Err       io.Writer
+	Runner    Runner
+	Selector  SelectorFunc
+	Random    *rand.Rand
+	PIDAlive  func(string) bool
 }
 
 func NewApp() *App {
@@ -44,6 +45,9 @@ func (a *App) Run(args []string) int {
 			return 1
 		}
 		a.Root = root
+	}
+	if a.StateRoot == "" {
+		a.StateRoot = resolveStateRoot(a.Root)
 	}
 
 	if len(args) == 0 {
@@ -191,7 +195,7 @@ func (a *App) runStartScript(resource string, profile string, blind bool) error 
 	cmd := Command{
 		Path:   path,
 		Dir:    a.Root,
-		Env:    commandEnv(),
+		Env:    commandEnv(a.envOverrides()...),
 		Stdin:  a.In,
 		Stdout: a.Out,
 		Stderr: a.Err,
@@ -200,7 +204,7 @@ func (a *App) runStartScript(resource string, profile string, blind bool) error 
 		cmd.Dir = filepath.Join(a.Root, "scenarios", resource)
 		cmd.Stdout = io.Discard
 	} else if envName := ProfileEnvVar(resource); envName != "" {
-		cmd.Env = commandEnv(envName + "=" + profile)
+		cmd.Env = commandEnv(append(a.envOverrides(), envName+"="+profile)...)
 	}
 	return a.Runner.Run(cmd)
 }
@@ -211,7 +215,7 @@ func (a *App) stopAll(quiet bool) int {
 		cmd := Command{
 			Path:   path,
 			Dir:    filepath.Join(a.Root, "scenarios", resource),
-			Env:    commandEnv(),
+			Env:    commandEnv(a.envOverrides()...),
 			Stdin:  a.In,
 			Stdout: a.Out,
 			Stderr: a.Err,
@@ -231,14 +235,16 @@ func (a *App) reveal() int {
 		fmt.Fprintln(a.Out, "No active scenario. Start one with use-practice run")
 		return 1
 	}
-	answerPath := filepath.Join(a.Root, "scenarios", pick, ".answer")
-	data, err := os.ReadFile(answerPath)
-	if err != nil {
-		fmt.Fprintf(a.Out, "Scenario '%s' has no answer file. Was it started?\n", pick)
-		return 1
+	for _, base := range a.scenarioStateBases(pick) {
+		answerPath := filepath.Join(base, ".answer")
+		data, err := os.ReadFile(answerPath)
+		if err == nil {
+			_, _ = a.Out.Write(data)
+			return 0
+		}
 	}
-	_, _ = a.Out.Write(data)
-	return 0
+	fmt.Fprintf(a.Out, "Scenario '%s' has no answer file. Was it started?\n", pick)
+	return 1
 }
 
 func (a *App) status() int {
@@ -249,8 +255,11 @@ func (a *App) status() int {
 	}
 
 	runID := ""
-	if data, err := os.ReadFile(filepath.Join(a.Root, "scenarios", pick, ".run-id")); err == nil {
-		runID = strings.TrimSpace(string(data))
+	for _, base := range a.scenarioStateBases(pick) {
+		if data, err := os.ReadFile(filepath.Join(base, ".run-id")); err == nil {
+			runID = strings.TrimSpace(string(data))
+			break
+		}
 	}
 	if runID == "" {
 		fmt.Fprintln(a.Out, "Active run: unknown")
@@ -258,18 +267,22 @@ func (a *App) status() int {
 		fmt.Fprintf(a.Out, "Active run: %s\n", runID)
 	}
 
-	processPath := filepath.Join(a.Root, "scenarios", pick, ".processes")
-	if _, err := os.Stat(processPath); err == nil {
-		a.printRecordedProcesses(processPath)
+	for _, base := range a.scenarioStateBases(pick) {
+		processPath := filepath.Join(base, ".processes")
+		if _, err := os.Stat(processPath); err == nil {
+			a.printRecordedProcesses(processPath)
+			break
+		}
 	}
 	return 0
 }
 
 func (a *App) activeScenario() (string, bool) {
 	for _, resource := range scenarioResources {
-		base := filepath.Join(a.Root, "scenarios", resource)
-		if fileExists(filepath.Join(base, ".run-id")) || fileExists(filepath.Join(base, ".answer")) {
-			return resource, true
+		for _, base := range a.scenarioStateBases(resource) {
+			if fileExists(filepath.Join(base, ".run-id")) || fileExists(filepath.Join(base, ".answer")) {
+				return resource, true
+			}
 		}
 	}
 	return "", false
@@ -360,6 +373,45 @@ func resolveRoot() (string, error) {
 		return "", err
 	}
 	return filepath.Dir(exe), nil
+}
+
+func resolveStateRoot(root string) string {
+	if envRoot := os.Getenv("USE_PRACTICE_STATE_DIR"); envRoot != "" {
+		abs, err := filepath.Abs(envRoot)
+		if err != nil {
+			return envRoot
+		}
+		return abs
+	}
+
+	cleanRoot := filepath.Clean(root)
+	if resolved, err := filepath.EvalSymlinks(cleanRoot); err == nil {
+		cleanRoot = resolved
+	}
+	if cleanRoot == "/opt/use-practice" {
+		return "/var/lib/use-practice/state"
+	}
+	return ""
+}
+
+func (a *App) envOverrides() []string {
+	overrides := []string{"USE_PRACTICE_ROOT=" + a.Root}
+	if a.StateRoot != "" {
+		overrides = append(overrides, "USE_PRACTICE_STATE_DIR="+a.StateRoot)
+	}
+	return overrides
+}
+
+func (a *App) scenarioStateBases(resource string) []string {
+	legacy := filepath.Join(a.Root, "scenarios", resource)
+	if a.StateRoot == "" {
+		return []string{legacy}
+	}
+	current := filepath.Join(a.StateRoot, resource)
+	if current == legacy {
+		return []string{current}
+	}
+	return []string{current, legacy}
 }
 
 func fileExists(path string) bool {

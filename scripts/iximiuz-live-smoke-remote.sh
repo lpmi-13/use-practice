@@ -4,6 +4,7 @@
 set -euo pipefail
 
 root="${USE_PRACTICE_ROOT:-/opt/use-practice}"
+state_root="${USE_PRACTICE_STATE_DIR:-/var/lib/use-practice/state}"
 require_network_veth="${REQUIRE_NETWORK_VETH:-1}"
 wait_lab_ready="${WAIT_LAB_READY:-1}"
 run_cpu_kernelwait="${RUN_CPU_KERNELWAIT:-1}"
@@ -56,6 +57,12 @@ need_pattern() {
   fi
 }
 
+state_file() {
+  local scenario="$1"
+  local file="$2"
+  printf '%s/%s/%s\n' "$state_root" "$scenario" "$file"
+}
+
 run_tty() {
   local keys="$1"
   shift
@@ -90,7 +97,8 @@ for path in \
   /usr/local/bin/use-practice \
   ./bin/uworker \
   ./bin/updisk \
-  ./bin/uwait
+  ./bin/uwait \
+  /usr/local/libexec/use-practice-privileged
 do
   need_executable "$path"
 done
@@ -135,7 +143,7 @@ run_tty '4\n' './use-practice' | grep -q '^network'
 if [ "$run_cpu_kernelwait" != "0" ]; then
   log "cpu kernelwait"
   run_tty '4\n' './use-practice run cpu'
-  need_pattern '^PROFILE=kernelwait$' scenarios/cpu/.env
+  need_pattern '^PROFILE=kernelwait$' "$(state_file cpu .env)"
   ./use-practice status | grep -q '^Active run: '
   ./use-practice stop
 fi
@@ -143,7 +151,7 @@ fi
 if [ "$run_disk_saturation" != "0" ]; then
   log "disk saturation"
   run_tty '3\n' './use-practice run disk'
-  need_pattern '^PROFILE=saturation$' scenarios/disk/.env
+  need_pattern '^PROFILE=saturation$' "$(state_file disk .env)"
   ./use-practice status | grep -q '^Active run: '
   ./use-practice stop
 fi
@@ -151,11 +159,11 @@ fi
 if [ "$run_network_highload" != "0" ]; then
   log "network highload"
   run_tty '4\n' './use-practice run network'
-  need_pattern '^PROFILE=highload$' scenarios/network/.env
+  need_pattern '^PROFILE=highload$' "$(state_file network .env)"
   if [ "$require_network_veth" != "0" ]; then
-    if grep -q '^NETWORK_PATH=loopback fallback$' scenarios/network/.env; then
+    if grep -q '^NETWORK_PATH=loopback fallback$' "$(state_file network .env)"; then
       echo "network scenario used loopback fallback; expected veth/netns in iximiuz" >&2
-      cat scenarios/network/.env >&2
+      cat "$(state_file network .env)" >&2
       exit 1
     fi
   fi
@@ -166,11 +174,11 @@ fi
 if [ "$run_memory_oom" != "0" ]; then
   log "memory oom"
   run_tty '4\n' './use-practice run memory'
-  need_pattern '^PROFILE=oom$' scenarios/memory/.env
-  cg="$(awk -F= '/^CGROUP_DIR=/ {print $2}' scenarios/memory/.env)"
+  need_pattern '^PROFILE=oom$' "$(state_file memory .env)"
+  cg="$(awk -F= '/^CGROUP_DIR=/ {print $2}' "$(state_file memory .env)")"
   [ -n "$cg" ] || {
     echo "memory OOM scenario did not record CGROUP_DIR" >&2
-    cat scenarios/memory/.env >&2
+    cat "$(state_file memory .env)" >&2
     exit 1
   }
 

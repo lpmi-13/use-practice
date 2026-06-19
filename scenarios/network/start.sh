@@ -54,31 +54,40 @@ else
   fi
 fi
 
+if setup_veth_pair; then
+  TARGET_HOST="$VETH_PEER_IP"
+  SERVER_BIND_HOST="$VETH_PEER_IP"
+  NETWORK_PATH="$VETH_HOST on the host to $VETH_PEER in netns $NETNS"
+  SERVER_IN_NETNS=1
+  NETWORK_NOTE="Traffic should be visible on host interface $VETH_HOST."
+else
+  TARGET_HOST="127.0.0.1"
+  SERVER_BIND_HOST="127.0.0.1"
+  NETWORK_PATH="loopback fallback"
+  SERVER_IN_NETNS=0
+  NETWORK_NOTE="Traffic is on loopback because veth/netns setup was unavailable; include lo in interface checks."
+fi
+
 # Stage the sink (server). It may need to run inside a netns, so it is launched
 # directly rather than through launch_workload.
 SERVER_BIN="$(stage_workload uworker "$TARGET_SERVICE" <<EOF
 mode=netserver
 proto=$NETWORK_PROTO
+listen_host=$SERVER_BIND_HOST
 port=$SINK_PORT
 read_bps=$SERVER_READ_BPS
 read_buf=$SERVER_READ_BUF
 EOF
 )"
 
-if setup_veth_pair; then
-  TARGET_HOST="$VETH_PEER_IP"
-  NETWORK_PATH="$VETH_HOST on the host to $VETH_PEER in netns $NETNS"
+if [ "$SERVER_IN_NETNS" = "1" ]; then
   if [ "$(id -u)" = "0" ]; then
     SERVER_SCRIPT="exec -a \"\$0\" ip netns exec \"$NETNS\" \"$SERVER_BIN\""
   else
-    SERVER_SCRIPT="exec -a \"\$0\" sudo -n ip netns exec \"$NETNS\" \"$SERVER_BIN\""
+    SERVER_SCRIPT="exec -a \"\$0\" sudo -n \"$PRIV_HELPER\" netns-exec \"$RUN_ID\" \"$SERVER_BIN\""
   fi
-  NETWORK_NOTE="Traffic should be visible on host interface $VETH_HOST."
 else
-  TARGET_HOST="127.0.0.1"
-  NETWORK_PATH="loopback fallback"
   SERVER_SCRIPT="exec -a \"\$0\" \"$SERVER_BIN\""
-  NETWORK_NOTE="Traffic is on loopback because veth/netns setup was unavailable; include lo in interface checks."
 fi
 
 cat > .env <<EOF

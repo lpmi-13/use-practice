@@ -2,6 +2,20 @@
 
 USE_PRACTICE_ROOT="${USE_PRACTICE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 BIN_DIR="${BIN_DIR:-$USE_PRACTICE_ROOT/bin}"
+SCENARIO_NAME="${SCENARIO_NAME:-$(basename "$PWD")}"
+
+if [ -n "${USE_PRACTICE_STATE_DIR:-}" ]; then
+  STATE_DIR="$USE_PRACTICE_STATE_DIR/$SCENARIO_NAME"
+else
+  root_real="$(cd "$USE_PRACTICE_ROOT" 2>/dev/null && pwd -P || printf '%s\n' "$USE_PRACTICE_ROOT")"
+  if [ "$root_real" = "/opt/use-practice" ]; then
+    STATE_DIR="/var/lib/use-practice/state/$SCENARIO_NAME"
+  else
+    STATE_DIR="$PWD"
+  fi
+fi
+
+PRIV_HELPER="${USE_PRACTICE_PRIV_HELPER:-/usr/local/libexec/use-practice-privileged}"
 
 SCENARIOS=(cpu memory disk network)
 SERVICE_POOL=(
@@ -14,6 +28,111 @@ SERVICES=()
 die() {
   echo "error: $*" >&2
   exit 1
+}
+
+have_priv_helper() {
+  [ -x "$PRIV_HELPER" ] || return 1
+  if [ "$(id -u)" = "0" ]; then
+    "$PRIV_HELPER" check >/dev/null 2>&1
+    return $?
+  fi
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo -n "$PRIV_HELPER" check >/dev/null 2>&1
+}
+
+run_priv_helper() {
+  if [ "$(id -u)" = "0" ]; then
+    "$PRIV_HELPER" "$@"
+  else
+    sudo -n "$PRIV_HELPER" "$@"
+  fi
+}
+
+valid_run_id() {
+  local value="$1"
+  [[ "$value" =~ ^r[0-9a-fA-F]{8}$ ]]
+}
+
+recorded_run_id() {
+  local rid
+  [ -f .run-id ] || return 1
+  rid="$(tr -d '[:space:]' < .run-id)"
+  valid_run_id "$rid" || return 1
+  printf '%s\n' "$rid"
+}
+
+valid_pid() {
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]+$ ]] && [ "$pid" -gt 1 ]
+}
+
+pid_belongs_to_recorded_run() {
+  local pid="$1"
+  local rid="$2"
+  [ -r "/proc/$pid/environ" ] || return 1
+  tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | \
+    grep -qx "USE_PRACTICE_RUN_ID=$rid"
+}
+
+pid_is_staged_workload() {
+  local pid="$1"
+  local exe base
+
+  exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+  [ -n "$exe" ] || return 1
+  exe="${exe% (deleted)}"
+  base="$(pwd -P)/.runtime/bin/"
+  case "$exe" in
+    "$base"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+pid_is_safe_to_kill() {
+  local pid="$1"
+  local rid="$2"
+  pid_belongs_to_recorded_run "$pid" "$rid" || pid_is_staged_workload "$pid"
+}
+
+safe_process_group_kill() {
+  local signal="$1"
+  local pid="$2"
+  local pgid
+
+  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ "$pgid" = "$pid" ]; then
+    kill "-$signal" -- "-$pid" >/dev/null 2>&1 || kill "-$signal" "$pid" >/dev/null 2>&1 || true
+  else
+    kill "-$signal" "$pid" >/dev/null 2>&1 || true
+  fi
+}
+
+expected_netns_name() {
+  local rid suffix
+  rid="$(recorded_run_id)" || return 1
+  suffix="${rid#r}"
+  printf 'up-%s\n' "${suffix:0:8}"
+}
+
+expected_veth_host_name() {
+  local rid suffix
+  rid="$(recorded_run_id)" || return 1
+  suffix="${rid#r}"
+  printf 'veth%sh\n' "${suffix:0:8}"
+}
+
+safe_cgroup_path() {
+  local item="$1"
+  local rid base service
+  rid="$(recorded_run_id)" || return 1
+  case "$item" in
+    /sys/fs/cgroup/use-practice-"$rid"-*-oom) ;;
+    *) return 1 ;;
+  esac
+  base="${item##*/}"
+  service="${base#use-practice-$rid-}"
+  service="${service%-oom}"
+  [[ "$service" =~ ^[a-z][a-z0-9-]*$ ]]
 }
 
 need_cmd() {
@@ -145,12 +264,18 @@ pick_random_service() {
 }
 
 start_run() {
+  cleanup_state_dir "$STATE_DIR"
+  if [ "$STATE_DIR" != "$PWD" ]; then
+    cleanup_state_dir "$PWD"
+  fi
+
   RUN_ID="${RUN_ID:-$(new_run_id)}"
   WORKLOAD_PREFIX="${WORKLOAD_PREFIX:-up-$RUN_ID}"
-  RUNTIME_DIR="${RUNTIME_DIR:-$PWD/.runtime}"
-  LOG_DIR="${LOG_DIR:-$PWD/.logs}"
+  RUNTIME_DIR="${RUNTIME_DIR:-$STATE_DIR/.runtime}"
+  LOG_DIR="${LOG_DIR:-$STATE_DIR/.logs}"
   choose_services "${1:-}"
-  mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
+  mkdir -p "$STATE_DIR" "$RUNTIME_DIR" "$LOG_DIR"
+  cd "$STATE_DIR"
 }
 
 start_service() {
@@ -174,24 +299,25 @@ start_service() {
   fi
   pid="$!"
   disown "$pid" >/dev/null 2>&1 || true
-  echo "$pid" >> .pids
-  printf '%s\t%s\t%s\t%s\n' "$pid" "$name" "$summary" "$logfile" >> .processes
+  echo "$pid" >> "$STATE_DIR/.pids"
+  printf '%s\t%s\t%s\t%s\n' "$pid" "$name" "$summary" "$logfile" >> "$STATE_DIR/.processes"
 }
 
 stop_recorded_processes() {
   local pids=()
-  local pid i
+  local pid i rid
 
   if [ ! -f .pids ]; then
     return 0
   fi
+  rid="$(recorded_run_id)" || return 0
 
   mapfile -t pids < .pids
   for ((i=${#pids[@]} - 1; i >= 0; i--)); do
     pid="${pids[$i]}"
     [ -n "$pid" ] || continue
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      kill -TERM -- "-$pid" >/dev/null 2>&1 || kill -TERM "$pid" >/dev/null 2>&1 || true
+    if valid_pid "$pid" && kill -0 "$pid" >/dev/null 2>&1 && pid_is_safe_to_kill "$pid" "$rid"; then
+      safe_process_group_kill TERM "$pid"
     fi
   done
 
@@ -200,8 +326,8 @@ stop_recorded_processes() {
   for ((i=${#pids[@]} - 1; i >= 0; i--)); do
     pid="${pids[$i]}"
     [ -n "$pid" ] || continue
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      kill -KILL -- "-$pid" >/dev/null 2>&1 || kill -KILL "$pid" >/dev/null 2>&1 || true
+    if valid_pid "$pid" && kill -0 "$pid" >/dev/null 2>&1 && pid_is_safe_to_kill "$pid" "$rid"; then
+      safe_process_group_kill KILL "$pid"
     fi
   done
 }
@@ -217,9 +343,11 @@ setup_veth_pair() {
 
   local ip_cmd=(ip)
   if [ "$(id -u)" != "0" ]; then
-    command -v sudo >/dev/null 2>&1 || return 1
-    sudo -n true >/dev/null 2>&1 || return 1
-    ip_cmd=(sudo ip)
+    have_priv_helper || return 1
+    run_priv_helper netns-setup "$RUN_ID" >/dev/null 2>&1 || return 1
+    echo "$NETNS" > .netns
+    echo "$VETH_HOST" > .links
+    return 0
   fi
   command -v ip >/dev/null 2>&1 || return 1
 
@@ -267,23 +395,38 @@ setup_veth_pair() {
 }
 
 cleanup_network_state() {
-  local item
+  local item rid expected_netns expected_link
+  rid="$(recorded_run_id)" || return 0
+  expected_netns="$(expected_netns_name)" || return 0
+  expected_link="$(expected_veth_host_name)" || return 0
+
   local ip_cmd=(ip)
   if [ "$(id -u)" != "0" ]; then
-    command -v sudo >/dev/null 2>&1 || return 0
-    sudo -n true >/dev/null 2>&1 || return 0
-    ip_cmd=(sudo ip)
+    have_priv_helper || return 0
+    if [ -f .netns ]; then
+      while IFS= read -r item; do
+        [ "$item" = "$expected_netns" ] || continue
+        run_priv_helper netns-delete "$rid" >/dev/null 2>&1 || true
+      done < .netns
+    fi
+    if [ -f .links ]; then
+      while IFS= read -r item; do
+        [ "$item" = "$expected_link" ] || continue
+        run_priv_helper link-delete "$rid" >/dev/null 2>&1 || true
+      done < .links
+    fi
+    return 0
   fi
   if command -v ip >/dev/null 2>&1; then
     if [ -f .netns ]; then
       while IFS= read -r item; do
-        [ -n "$item" ] || continue
+        [ "$item" = "$expected_netns" ] || continue
         "${ip_cmd[@]}" netns delete "$item" >/dev/null 2>&1 || true
       done < .netns
     fi
     if [ -f .links ]; then
       while IFS= read -r item; do
-        [ -n "$item" ] || continue
+        [ "$item" = "$expected_link" ] || continue
         "${ip_cmd[@]}" link delete "$item" >/dev/null 2>&1 || true
       done < .links
     fi
@@ -294,22 +437,39 @@ cleanup_cgroup_state() {
   local item
   if [ -f .cgroups ]; then
     while IFS= read -r item; do
-      [ -n "$item" ] || continue
+      safe_cgroup_path "$item" || continue
       if [ -d "$item" ]; then
-        rmdir "$item" >/dev/null 2>&1 || sudo -n rmdir "$item" >/dev/null 2>&1 || true
+        rmdir "$item" >/dev/null 2>&1 || run_priv_helper cgroup-rmdir "$item" >/dev/null 2>&1 || true
       fi
     done < .cgroups
   fi
 }
 
 delete_scenario_resources() {
-  stop_recorded_processes
-  cleanup_network_state
-  cleanup_cgroup_state
-  rm -rf .runtime .logs
-  rm -f \
-    .env .answer .run-id .pids .processes .netns .links \
-    .cgroups .plan.sh .rendered.yaml .rendered-body.yaml .rendered-role.yaml
+  local dir seen=""
+  for dir in "$STATE_DIR" "$PWD"; do
+    [ -d "$dir" ] || continue
+    case " $seen " in
+      *" $dir "*) continue ;;
+    esac
+    seen="$seen $dir"
+    cleanup_state_dir "$dir"
+  done
+}
+
+cleanup_state_dir() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  (
+    cd "$dir" || exit 0
+    stop_recorded_processes
+    cleanup_network_state
+    cleanup_cgroup_state
+    rm -rf -- .runtime .logs
+    rm -f -- \
+      .env .answer .run-id .pids .processes .netns .links \
+      .cgroups .plan.sh .rendered.yaml .rendered-body.yaml .rendered-role.yaml
+  )
 }
 
 print_recorded_processes() {

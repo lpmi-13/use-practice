@@ -144,6 +144,26 @@ func TestRunResourceSelectsProfileAndSetsEnvironment(t *testing.T) {
 	}
 }
 
+func TestRunPassesStateRootToScenarioScripts(t *testing.T) {
+	app, runner, _ := newTestApp(t, "saturation")
+	app.StateRoot = filepath.Join(t.TempDir(), "state")
+
+	if code := app.Run([]string{"run", "disk"}); code != 0 {
+		t.Fatalf("Run returned %d", code)
+	}
+
+	start := runner.commands[len(runner.commands)-1]
+	if !envContains(start.Env, "USE_PRACTICE_ROOT="+app.Root) {
+		t.Fatalf("missing USE_PRACTICE_ROOT in env: %#v", start.Env)
+	}
+	if !envContains(start.Env, "USE_PRACTICE_STATE_DIR="+app.StateRoot) {
+		t.Fatalf("missing USE_PRACTICE_STATE_DIR in env: %#v", start.Env)
+	}
+	if !envContains(start.Env, "DISK_PROFILE=saturation") {
+		t.Fatalf("missing DISK_PROFILE=saturation in env: %#v", start.Env)
+	}
+}
+
 func TestDirectResourceAliasUsesProfileSelector(t *testing.T) {
 	app, runner, _ := newTestApp(t, "kernelwait")
 
@@ -229,6 +249,34 @@ func TestStatusPrintsOnlyPidServiceState(t *testing.T) {
 	}
 }
 
+func TestStatusReadsFromStateRoot(t *testing.T) {
+	app, _, out := newTestApp(t)
+	app.StateRoot = filepath.Join(t.TempDir(), "state")
+	scenarioDir := filepath.Join(app.StateRoot, "network")
+	if err := os.MkdirAll(scenarioDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scenarioDir, ".run-id"), []byte("rabc12345\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	processes := "123\tgateway\tnetwork source\tnetwork.log\n"
+	if err := os.WriteFile(filepath.Join(scenarioDir, ".processes"), []byte(processes), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := app.Run([]string{"status"}); code != 0 {
+		t.Fatalf("Run returned %d", code)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "Active run: rabc12345") {
+		t.Fatalf("missing state-root run id:\n%s", got)
+	}
+	if !strings.Contains(got, "123      gateway") {
+		t.Fatalf("missing state-root process:\n%s", got)
+	}
+}
+
 func TestRevealPrintsAnswerVerbatim(t *testing.T) {
 	app, _, out := newTestApp(t)
 	scenarioDir := filepath.Join(app.Root, "scenarios", "cpu")
@@ -240,6 +288,25 @@ func TestRevealPrintsAnswerVerbatim(t *testing.T) {
 		t.Fatalf("Run returned %d", code)
 	}
 	if got := out.String(); got != "Resource: CPU\n" {
+		t.Fatalf("unexpected reveal output %q", got)
+	}
+}
+
+func TestRevealReadsFromStateRoot(t *testing.T) {
+	app, _, out := newTestApp(t)
+	app.StateRoot = filepath.Join(t.TempDir(), "state")
+	scenarioDir := filepath.Join(app.StateRoot, "disk")
+	if err := os.MkdirAll(scenarioDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scenarioDir, ".answer"), []byte("Resource: Disk\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := app.Run([]string{"reveal"}); code != 0 {
+		t.Fatalf("Run returned %d", code)
+	}
+	if got := out.String(); got != "Resource: Disk\n" {
 		t.Fatalf("unexpected reveal output %q", got)
 	}
 }

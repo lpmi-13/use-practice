@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -61,5 +62,24 @@ func pidAlive(pid string) bool {
 
 func commandEnv(extra ...string) []string {
 	env := os.Environ()
-	return append(env, extra...)
+	for _, entry := range extra {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok || key == "" {
+			env = append(env, entry)
+			continue
+		}
+		replaced := false
+		prefix := key + "="
+		for i, existing := range env {
+			if strings.HasPrefix(existing, prefix) {
+				env[i] = entry
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			env = append(env, entry)
+		}
+	}
+	return env
 }
