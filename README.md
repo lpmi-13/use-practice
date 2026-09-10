@@ -79,7 +79,7 @@ For targeted local testing, run `use-practice run cpu` and choose
 For targeted local testing, run `use-practice run memory` and choose
 `resident`, `pressure`, or `oom` from the profile selector.
 
-**Disk** has two profiles:
+**Disk** has three profiles:
 
 - `utilization`: issues continuous queue-depth-one direct random I/O, keeping
   the backing device busy without building a large sustained queue.
@@ -88,8 +88,15 @@ For targeted local testing, run `use-practice run memory` and choose
   queue depth and await spike without sustained full-device busy time, exposing
   queueing that `%util` alone would miss.
 
+- `latency`: issues sustained deep-queue (128-256) large-block (512K-1M) direct
+  I/O, driving the device to its bandwidth ceiling so requests genuinely queue
+  at the device and per-op `await` climbs into the hundreds of milliseconds.
+  Unlike `saturation` this also pegs `%util`; use it when you need real device
+  latency (a fast SSD/virtio device will not build sustained await from shallow
+  small-I/O bursts). Uses a larger scratch file.
+
 For targeted local testing, run `use-practice run disk` and choose
-`utilization` or `saturation` from the profile selector.
+`utilization`, `saturation`, or `latency` from the profile selector.
 
 **Network** has three profiles:
 

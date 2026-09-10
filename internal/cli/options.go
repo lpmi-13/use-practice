@@ -53,6 +53,7 @@ func ProfileOptions(resource string) []Option {
 			{Value: "random", Label: "random", Summary: "Pick one disk profile at random"},
 			{Value: "utilization", Label: "utilization", Summary: "Continuous queue-depth-one direct random I/O"},
 			{Value: "saturation", Label: "saturation", Summary: "Short high-depth I/O bursts that expose queueing"},
+			{Value: "latency", Label: "latency", Summary: "Sustained deep-queue large-block I/O that drives real device await (heavy: pegs the disk)"},
 		}
 	case "network":
 		return []Option{

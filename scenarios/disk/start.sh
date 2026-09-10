@@ -13,12 +13,12 @@ RW_OPTIONS=(randwrite randread randrw)
 RW="${RW_OPTIONS[$((RANDOM % ${#RW_OPTIONS[@]}))]}"
 DISK_FILE_SIZE_MB=256
 DISK_FILE="$RUNTIME_DIR/use-practice-scratch.bin"
-PROFILE_OPTIONS=(utilization saturation)
+PROFILE_OPTIONS=(utilization saturation latency)
 PROFILE="${DISK_PROFILE:-random}"
 case "$PROFILE" in
   random) PROFILE="${PROFILE_OPTIONS[$((RANDOM % ${#PROFILE_OPTIONS[@]}))]}" ;;
-  utilization|saturation) ;;
-  *) die "DISK_PROFILE must be 'utilization', 'saturation', or 'random'." ;;
+  utilization|saturation|latency) ;;
+  *) die "DISK_PROFILE must be 'utilization', 'saturation', 'latency', or 'random'." ;;
 esac
 
 if [ "$PROFILE" = "utilization" ]; then
@@ -30,7 +30,7 @@ if [ "$PROFILE" = "utilization" ]; then
   PROFILE_LABEL="Utilization: continuous queue-depth-one direct I/O"
   EXPECTED_SIGNAL="High device busy time with little sustained queueing."
   DUTY_LINE="Duty:      continuous"
-else
+elif [ "$PROFILE" = "saturation" ]; then
   BS_OPTIONS=(4 16 64)
   BS_K="${BS_OPTIONS[$((RANDOM % ${#BS_OPTIONS[@]}))]}"
   IODEPTH=$((32 + RANDOM % 33))
@@ -39,6 +39,26 @@ else
   PROFILE_LABEL="Saturation: short high-depth queue bursts"
   EXPECTED_SIGNAL="Queue depth and await spikes without sustained full-device busy time."
   DUTY_LINE="Burst:     ${BURST_MS}ms active / ${PAUSE_MS}ms idle"
+else
+  # Latency profile: sustained, deep-queue, large-block direct I/O. Unlike the
+  # saturation profile (which keeps %util low to isolate queueing), this drives
+  # the device to its bandwidth ceiling so requests genuinely queue AT the device
+  # and per-op service time (await) climbs into the hundreds of milliseconds.
+  # That high, sustained await is what a fast SSD/virtio device needs to actually
+  # back up -- shallow bursts of small I/O queue briefly but each op still
+  # completes sub-millisecond, so they never build real latency. randrw drives
+  # both read and write await. Uses a larger scratch file so the in-flight set
+  # (iodepth x block size, up to ~256 MiB) scatters instead of fitting in cache.
+  BS_OPTIONS=(512 1024)
+  BS_K="${BS_OPTIONS[$((RANDOM % ${#BS_OPTIONS[@]}))]}"
+  IODEPTH=$((128 + RANDOM % 129))
+  BURST_MS=0
+  PAUSE_MS=0
+  RW=randrw
+  DISK_FILE_SIZE_MB=1024
+  PROFILE_LABEL="Latency: sustained deep-queue large-block direct I/O"
+  EXPECTED_SIGNAL="Sustained high await with a deep request queue as the device is driven to its bandwidth ceiling."
+  DUTY_LINE="Duty:      continuous deep-queue"
 fi
 
 cat > .env <<EOF
