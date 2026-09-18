@@ -5,8 +5,8 @@ title: USE Practice
 description: |-
     Practice Linux USE-method investigations against randomized host-level scenarios.
 
-    It already has the [use-tool](https://github.com/lpmi-13/use-tool) installed, so you can begin with that, or just run a free-form investigation.
-cover: /content/files/playgrounds/use-practice-4ce4816f/__static__/usemethodflow.png
+    It already has the investigation and load generating tools installed, so you can begin with that, or just run a free-form investigation.
+cover: /content/files/playgrounds/use-practice-4ce4816f/__static__/usemethodflow.png?v=1789752092241
 categories:
     - linux
     - networking
@@ -34,7 +34,7 @@ markdown: |-
     - cat /proc/*
     - iostat
 
-    ...etc
+    or you can use the preinstalled [use-tool](https://github.com/lpmi-13/use-tool) for a slightly more scaffolded experience.
 playground:
     networks:
         - name: local
