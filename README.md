@@ -6,6 +6,37 @@ randomized host-level workload on a Linux VM. Your job is to correlate what
 the investigation tools report with the real system state by checking
 utilization, saturation, and errors.
 
+## How it works
+
+`use-practice` is a small Go dispatcher over resource-specific Bash scenarios.
+When a run starts, it stops any previous scenario, chooses a profile and a fresh
+run ID, and builds a randomized fleet of service-like processes. The scenario
+scripts size their load from the host they are running on, then launch the
+in-tree Go or Rust workload that produces the selected CPU, memory, disk, or
+network signal.
+
+The culprit and its decoys run byte-identical worker binaries copied to
+service-named paths in a private run directory. Their behavior comes from a
+small adjacent config file that each worker reads and immediately unlinks, so
+process names, command lines, and executable paths do not reveal the answer.
+Run-scoped state records the process inventory and solution: `status` reports
+the former, `reveal` prints the latter, and `stop` validates the recorded run
+before terminating its process groups and cleaning up temporary files, network
+namespaces, or cgroups.
+
+### Why Not all Go (ie, some in Rust)?
+
+The CLI and general-purpose workload code are Go, but two workers need unusually
+low-level Linux control. `updisk` uses `O_DIRECT`, aligned buffers, and explicit
+`io_uring` queues to produce predictable disk queue depth and latency. `uwait`
+uses native threads and a tightly constrained `vfork` child to create non-I/O
+uninterruptible kernel waits, which is a poor fit for Go's managed goroutine and
+runtime model.
+
+Both could theoretically be rewritten in Go using third-party bindings, raw
+syscalls, and `unsafe`, but that would add complexity and risk without improving
+the exercise. Rust therefore stays isolated to those two kernel-facing workers.
+
 ## Intended Environment
 
 This project is intended to run inside an ephemeral training VM, specifically
