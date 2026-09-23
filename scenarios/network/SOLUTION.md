@@ -22,14 +22,14 @@ you to include `lo` in interface checks.
 | Dimension    | Tool                          | What you should see                                   |
 |--------------|-------------------------------|-------------------------------------------------------|
 | Utilization  | `sar -n DEV 1`                | Utilization/high-load: one interface dominates throughput |
-| Saturation   | `ss -tin`, `ss -s`            | Saturation/high-load: Send-Q, retrans, rwnd/sndbuf-limited, drops |
+| Saturation   | `ss -t -i -n`, `ss -s`        | TCP saturation/high-load: Send-Q, retrans, rwnd/sndbuf-limited |
 | Errors       | `ip -s link`, `sar -n EDEV 1` | drops/overruns on a specific interface                |
 
 ## Pinning it to host processes
 
 ```bash
-./use-practice status
-ss -tnp
+use-practice status
+ss -t -u -n -p
 ip -s link
 ```
 
@@ -37,7 +37,8 @@ Several look-alike services are running; the decoys emit only tiny loopback
 chatter, so the talker with sustained connections to the sink is the culprit.
 For the saturation profile, the culprit may not be the highest-throughput
 process; instead, identify the connection with persistent send queue or TCP
-limited-time evidence.
+limited-time evidence. A UDP high-load run has no TCP connection diagnostics;
+use `ss -u -a -n` for its sockets and interface counters for loss or drops.
 
 ## TSA paragraph
 

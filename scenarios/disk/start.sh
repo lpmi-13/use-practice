@@ -112,10 +112,10 @@ echo
 echo "USE method starting points:"
 echo "  Utilization: iostat -xz 1   (look at %util column)"
 echo "  Saturation:  iostat -xz 1   (aqu-sz / await; compare with %util)"
-echo "  Errors:      dmesg | grep -i 'i/o error\\|ata'"
+echo "  Errors:      kernel storage logs, when access is available"
 echo
 echo "Host drill-down (find which service does the most I/O):"
-echo "  ./use-practice status"
+echo "  use-practice status"
 echo "  pidstat -d 1"
-echo "  iotop -bn1"
+echo "  cat /proc/<pid>/io"
 print_host_footer

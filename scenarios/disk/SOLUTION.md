@@ -27,14 +27,13 @@ counters but does not keep allocating more disk.
 |--------------|-----------------------------------|---------------------------------------------------|
 | Utilization  | `iostat -xz 1`                    | Utilization profile: `%util` high, `aqu-sz` near 1 |
 | Saturation   | `iostat -xz 1`                    | Saturation profile: `aqu-sz`/await spikes without sustained `%util` near 100; Latency profile: deep `aqu-sz` (100+) and `await` in the hundreds of ms with `%util` pegged |
-| Errors       | `dmesg \| grep -i 'i/o error'`    | Usually none in this lab; check timestamps for pre-existing host messages |
+| Errors       | Kernel storage logs, when readable | Usually none in this lab; check timestamps for pre-existing host messages |
 
 ## Pinning it to a host process
 
 ```bash
-./use-practice status
+use-practice status
 pidstat -d 1
-iotop -bn1
 cat /proc/<pid>/io
 ```
 
@@ -43,7 +42,8 @@ occasional I/O, so don't just look for the one process touching the disk. Look
 for the process whose I/O pattern matches the active profile: steady dominant
 I/O for utilization runs, repeated short bursts for saturation runs, or heavy
 sustained large-block I/O for latency runs.
-`pidstat -d 1`, `iotop`, or `cat /proc/<pid>/io` will identify the service.
+`pidstat -d 1` or `cat /proc/<pid>/io` will identify the service without
+requiring elevated privileges.
 
 The scratch data lives under the scenario's `.runtime/` directory and
 disappears when the scenario is stopped.

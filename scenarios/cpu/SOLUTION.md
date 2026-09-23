@@ -18,24 +18,22 @@ One service creates CPU pressure. The exact profile varies by run:
 | Utilization  | `top`, `mpstat -P ALL 1`  | One or more cores near 100% in user time     |
 | Saturation   | `vmstat 1`                | Utilization profile: `r` near CPU count; run-queue profile: `r` above CPU count; kernel-wait profile: `b` high |
 | Load         | `uptime`, `/proc/loadavg` | Inflated by both runnable and D-state tasks  |
-| Errors       | `dmesg`, `journalctl -k`  | Usually none for workload-driven CPU pressure |
+| Errors       | Kernel/hardware logs, when readable | Usually none for workload-driven CPU pressure |
 
 ## Pinning it to a host process
 
 ```bash
-./use-practice status
-top -bcn1 w512
-top -H -bcn1 w512
-ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head
-ps -eLo pid,tid,ppid,stat,wchan:32,pcpu,comm,args | awk '$4 ~ /R|D/'
+use-practice status
+top
+ps -e -o pcpu= -o pid= -o ppid= -o pgid= -o args= | sort -nr | head
 ```
 
 Several look-alike services are running. Sort by `%CPU` to find the service
-burning CPU, then switch to thread view when the answer mentions D-state
-waiters. In the kernel-wait profile, the active service should have many
-threads in `D` with a wait channel like `kernel_clone`; those waits come from
-`vfork`, so they are non-I/O uninterruptible sleeps. Ordinary userspace mutex
-or futex contention would normally show as interruptible sleep instead.
+burning CPU, then use a thread-aware process viewer when the answer mentions
+D-state waiters. In the kernel-wait profile, the active service should have
+many threads in `D` with a wait channel like `kernel_clone`; those waits come
+from `vfork`, so they are non-I/O uninterruptible sleeps. Ordinary userspace
+mutex or futex contention would normally show as interruptible sleep instead.
 
 ## TSA paragraph
 

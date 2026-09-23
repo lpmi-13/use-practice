@@ -149,11 +149,15 @@ echo "$NETWORK_NOTE"
 echo
 echo "USE method starting points:"
 echo "  Utilization: sar -n DEV 1   (rxkB/s, txkB/s vs link speed)"
-echo "  Saturation:  ss -s, ss -tin (Send-Q, retrans, rwnd/sndbuf-limited)"
+if [ "$NETWORK_PROTO" = "tcp" ]; then
+  echo "  Saturation:  ss -s, ss -t -i -n (Send-Q, retrans, rwnd/sndbuf-limited)"
+else
+  echo "  Saturation:  ss -s, ss -u -a -n (UDP queues; pair with drop counters)"
+fi
 echo "  Errors:      ip -s link, sar -n EDEV 1   (drops, errors)"
 echo
 echo "Host drill-down (find the heavy talker):"
-echo "  ./use-practice status"
-echo "  ss -tnp"
+echo "  use-practice status"
+echo "  ss -t -u -n -p"
 echo "  ip -s link"
 print_host_footer

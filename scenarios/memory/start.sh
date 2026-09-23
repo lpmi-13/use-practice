@@ -255,13 +255,13 @@ echo
 echo "USE method starting points:"
 echo "  Utilization: free -m   (look at used/available)"
 echo "  Saturation:  vmstat 1  (si/so swap columns), /proc/pressure/memory"
-echo "  Errors:      dmesg | grep -i 'killed process\\|oom'"
+echo "  Errors:      grep '^oom_kill ' /proc/vmstat"
 if [ "$PROFILE" = "oom" ]; then
   echo "               cat $CGROUP_DIR/memory.events"
 fi
 echo
 echo "Host drill-down (find which service holds the memory):"
-echo "  ./use-practice status"
-echo "  top -bcn1 w512"
-echo "  ps -eo pid,ppid,pgid,stat,pcpu,pmem,rss,args --sort=-rss | head"
+echo "  use-practice status"
+echo "  top"
+echo "  grep '^VmRSS:' /proc/[0-9]*/status 2>/dev/null | sort -k2,2nr | head"
 print_host_footer

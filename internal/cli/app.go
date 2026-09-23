@@ -345,10 +345,8 @@ Companion CLI:
 
 Process/service attribution:
   use-practice status
-  top -bcn1 w512
-  top -H -bcn1 w512
-  ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head
-  ps -eLo pid,tid,stat,wchan,comm | awk '$3 ~ /R|D/'
+  top
+  ps -e -o pcpu= -o pid= -o ppid= -o pgid= -o args= | sort -nr | head
   pidstat 1
 
 When you have an answer:

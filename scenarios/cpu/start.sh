@@ -70,14 +70,14 @@ EOF
   echo "CPU scenario running. ${#SERVICES[@]} services are up; one is consuming CPU."
   echo
   echo "USE method starting points:"
-  echo "  Utilization: top / htop / mpstat -P ALL 1"
+  echo "  Utilization: top / mpstat -P ALL 1"
   echo "  Saturation:  vmstat 1   (compare 'r' with logical CPU count)"
-  echo "  Errors:      dmesg or journalctl -k for hardware/thermal warnings"
+  echo "  Errors:      kernel/hardware logs, when access is available"
   echo
   echo "Host drill-down (find which service is hot):"
-  echo "  ./use-practice status"
-  echo "  top -bcn1 w512"
-  echo "  ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head"
+  echo "  use-practice status"
+  echo "  top"
+  echo "  ps -e -o pcpu= -o pid= -o ppid= -o pgid= -o args= | sort -nr | head"
 elif [ "$PROFILE" = "runq" ]; then
   require_workload_bin uworker
 
@@ -116,14 +116,14 @@ EOF
   echo "CPU scenario running. ${#SERVICES[@]} services are up; one is creating runnable run-queue pressure."
   echo
   echo "USE method starting points:"
-  echo "  Utilization: top / htop / mpstat -P ALL 1"
+  echo "  Utilization: top / mpstat -P ALL 1"
   echo "  Saturation:  vmstat 1   (look at 'r' run-queue column)"
-  echo "  Errors:      dmesg or journalctl -k for hardware/thermal warnings"
+  echo "  Errors:      kernel/hardware logs, when access is available"
   echo
   echo "Host drill-down (find which service is hot):"
-  echo "  ./use-practice status"
-  echo "  top -bcn1 w512"
-  echo "  ps -eo pid,ppid,pgid,stat,pcpu,pmem,args --sort=-pcpu | head"
+  echo "  use-practice status"
+  echo "  top"
+  echo "  ps -e -o pcpu= -o pid= -o ppid= -o pgid= -o args= | sort -nr | head"
 else
   require_workload_bin uwait
 
@@ -174,14 +174,14 @@ EOF
   echo "CPU scenario running. ${#SERVICES[@]} services are up; one is combining CPU burn with non-I/O D-state kernel waits."
   echo
   echo "USE method starting points:"
-  echo "  Utilization: top / htop / mpstat -P ALL 1"
+  echo "  Utilization: top / mpstat -P ALL 1"
   echo "  Saturation:  vmstat 1   (compare 'r' runnable and 'b' blocked columns)"
   echo "  Load:        uptime / cat /proc/loadavg   (load includes runnable and D-state tasks)"
-  echo "  Errors:      dmesg or journalctl -k for hardware/thermal warnings"
+  echo "  Errors:      kernel/hardware logs, when access is available"
   echo
   echo "Host drill-down (separate runnable CPU from non-I/O D wait):"
-  echo "  ./use-practice status"
-  echo "  top -H -bcn1 w512"
-  echo "  ps -eLo pid,tid,ppid,stat,wchan:32,pcpu,comm,args | awk '\$4 ~ /R|D/'"
+  echo "  use-practice status"
+  echo "  top"
+  echo "  Inspect per-thread state and wait channels with an available process viewer."
 fi
 print_host_footer

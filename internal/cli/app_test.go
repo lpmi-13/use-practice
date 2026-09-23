@@ -119,6 +119,53 @@ func TestRunRandomAliasStartsBlindScenario(t *testing.T) {
 	}
 }
 
+func TestBlindBannerUsesPortableTopInvocation(t *testing.T) {
+	app, _, out := newTestApp(t)
+
+	app.blindBanner()
+
+	got := out.String()
+	if !strings.Contains(got, "\n  top\n") {
+		t.Fatalf("blind banner should recommend plain top:\n%s", got)
+	}
+	if strings.Contains(got, "top -") {
+		t.Fatalf("blind banner should not depend on implementation-specific top options:\n%s", got)
+	}
+}
+
+func TestScenarioGuidanceAvoidsUnsupportedCommands(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "..", "scenarios", "cpu", "start.sh"),
+		filepath.Join("..", "..", "scenarios", "cpu", "SOLUTION.md"),
+		filepath.Join("..", "..", "scenarios", "memory", "start.sh"),
+		filepath.Join("..", "..", "scenarios", "memory", "SOLUTION.md"),
+		filepath.Join("..", "..", "scenarios", "disk", "start.sh"),
+		filepath.Join("..", "..", "scenarios", "disk", "SOLUTION.md"),
+		filepath.Join("..", "..", "scenarios", "network", "start.sh"),
+		filepath.Join("..", "..", "scenarios", "network", "SOLUTION.md"),
+	}
+	forbidden := []string{
+		"top -",
+		"htop",
+		"iotop",
+		"./use-practice status",
+		"--sort=",
+		"ps -e -L",
+	}
+
+	for _, path := range paths {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, command := range forbidden {
+			if strings.Contains(string(contents), command) {
+				t.Errorf("%s contains unsupported or environment-dependent command %q", path, command)
+			}
+		}
+	}
+}
+
 func TestRunResourceSelectsProfileAndSetsEnvironment(t *testing.T) {
 	app, runner, out := newTestApp(t, "oom")
 

@@ -23,24 +23,26 @@ profiles:
 |--------------|-----------------------------------------|-------------------------------------------------------|
 | Utilization  | `free -m`, `/proc/meminfo`              | `MemAvailable` / `available` low                     |
 | Saturation   | `vmstat 1`, `cat /proc/pressure/memory` | Resident: quiet after settling. Pressure: PSI `some`/`full` or `si`/`so` activity |
-| Errors       | `dmesg \| grep -i oom`, `cat <cgroup>/memory.events` | Resident/pressure: usually none. OOM: `oom_kill` increases repeatedly |
+| Errors       | `grep '^oom_kill ' /proc/vmstat`, `cat <cgroup>/memory.events` | Resident/pressure: usually none. OOM: `oom_kill` increases repeatedly |
 
 ## Pinning it to a host process
 
 ```bash
-./use-practice status
-top -bcn1 w512
-ps -eo pid,ppid,pgid,stat,pcpu,pmem,rss,args --sort=-rss | head
+use-practice status
+top
+grep '^VmRSS:' /proc/[0-9]*/status 2>/dev/null | sort -k2,2nr | head
 ```
 
 Several look-alike services are running; the one with disproportionate resident
-memory is the culprit. `top` sorted by RES (`Shift+M`) or `ps --sort=-rss` will
-show it holding the bytes, well above the small steady footprint of the decoys.
+memory is the culprit. Sorting `top` by resident memory or sorting the kernel's
+per-process `VmRSS` values will show it holding the bytes, well above the small
+steady footprint of the decoys. The PID is part of each `/proc/<pid>/status`
+path, so it can be matched to `use-practice status`.
 For pressure runs, repeat `vmstat 1` or PSI capture long enough to catch the
 churn cycle.
 
 For the OOM profile, the culprit supervisor remains alive while child workers
-are killed and restarted. `./use-practice status` shows the service as running,
+are killed and restarted. `use-practice status` shows the service as running,
 while the cgroup recorded in the memory scenario state `.env` has a
 persistently increasing `memory.events` `oom_kill` counter. In the packaged lab
 that state file is under `/var/lib/use-practice/state/memory`; in a local

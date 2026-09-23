@@ -84,7 +84,10 @@ exec /opt/use-practice/use-practice "$@"
 EOF_WRAPPER
 chmod 755 /usr/local/bin/use-practice
 
-for cmd in bash curl ip jq setpriv use-practice vmstat; do
+for cmd in \
+  bash curl dmesg free iostat iotop ip jq mpstat pidstat ps sar setpriv ss \
+  top use-practice vmstat
+do
   command -v "${cmd}" >/dev/null 2>&1 || {
     echo "missing expected tool: ${cmd}" >&2
     exit 1

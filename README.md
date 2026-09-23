@@ -219,14 +219,13 @@ shells both selectors fall back to `random` so automation does not block.
 1. Start a blind or named scenario.
 2. Check the host-level USE signals, either directly or through
    `use-tool practice system`:
-   - CPU: `top`, `mpstat -P ALL 1`, `vmstat 1`,
-     `ps -eLo pid,tid,stat,wchan,comm`
+   - CPU: `top`, `mpstat -P ALL 1`, `vmstat 1`
    - Memory: `free -m`, `vmstat 1`, `cat /proc/pressure/memory`
    - Disk: `iostat -xz 1`, `pidstat -d 1`
    - Network: `sar -n DEV 1`, `ss -s`, `ip -s link`
 3. Pivot from the resource signal to the responsible process or service-like
-   workload using normal host tools such as `top`, `ps`, `pidstat`, `iotop`,
-   `ss`, or the relevant profiler.
+   workload using normal host tools such as `top`, `ps`, `pidstat`, `ss`, or
+   the relevant profiler.
 4. Use `use-practice status` if you need the active run ID and live
    PID/service inventory without revealing the resource type.
 5. Use `use-practice reveal` to see the answer and the scenario's
