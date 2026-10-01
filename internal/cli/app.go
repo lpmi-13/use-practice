@@ -22,7 +22,12 @@ type App struct {
 	Selector  SelectorFunc
 	Random    *rand.Rand
 	PIDAlive  func(string) bool
+
+	// noColor is set by --no-color.
+	noColor bool
 }
+
+const noActiveScenario = "No active scenario. Start one with use-practice run"
 
 func NewApp() *App {
 	return &App{
@@ -38,10 +43,11 @@ func NewApp() *App {
 
 func (a *App) Run(args []string) int {
 	a.setDefaults()
+	args = a.stripColorFlag(args)
 	if a.Root == "" {
 		root, err := resolveRoot()
 		if err != nil {
-			fmt.Fprintf(a.Err, "error: %v\n", err)
+			a.errorf("%v", err)
 			return 1
 		}
 		a.Root = root
@@ -60,7 +66,7 @@ func (a *App) Run(args []string) int {
 			if errors.Is(err, ErrSelectorQuit) {
 				return 130
 			}
-			fmt.Fprintf(a.Err, "error: %v\n", err)
+			a.errorf("%v", err)
 			return 1
 		}
 		return a.runCommand(cmd, nil)
@@ -102,8 +108,7 @@ func (a *App) runCommand(cmd string, args []string) int {
 	switch cmd {
 	case "run":
 		if len(args) > 1 {
-			a.usage()
-			return 1
+			return a.usageError("run takes at most one scenario, got %q", strings.Join(args, " "))
 		}
 		if len(args) == 0 {
 			return a.runScenario("")
@@ -122,8 +127,7 @@ func (a *App) runCommand(cmd string, args []string) int {
 		a.usage()
 		return 0
 	default:
-		a.usage()
-		return 1
+		return a.usageError("unknown command %q", cmd)
 	}
 }
 
@@ -142,14 +146,13 @@ func (a *App) runScenario(mode string) int {
 			if errors.Is(err, ErrSelectorQuit) {
 				return 130
 			}
-			fmt.Fprintf(a.Err, "error: %v\n", err)
+			a.errorf("%v", err)
 			return 1
 		}
 		mode = selected
 	}
 	if !IsResourceOrRandom(mode) {
-		a.usage()
-		return 1
+		return a.usageError("unknown scenario %q", mode)
 	}
 
 	if mode == "random" {
@@ -171,7 +174,7 @@ func (a *App) runScenario(mode string) int {
 		if errors.Is(err, ErrSelectorQuit) {
 			return 130
 		}
-		fmt.Fprintf(a.Err, "error: %v\n", err)
+		a.errorf("%v", err)
 		return 1
 	}
 
@@ -184,6 +187,7 @@ func (a *App) runScenario(mode string) int {
 }
 
 func (a *App) selectValue(spec SelectorSpec) (string, error) {
+	spec.NoColor = a.noColor
 	if a.Selector == nil {
 		return spec.Fallback, nil
 	}
@@ -232,7 +236,7 @@ func (a *App) stopAll(quiet bool) int {
 func (a *App) reveal() int {
 	pick, ok := a.activeScenario()
 	if !ok {
-		fmt.Fprintln(a.Out, "No active scenario. Start one with use-practice run")
+		fmt.Fprintln(a.Out, noActiveScenario)
 		return 1
 	}
 	for _, base := range a.scenarioStateBases(pick) {
@@ -243,14 +247,14 @@ func (a *App) reveal() int {
 			return 0
 		}
 	}
-	fmt.Fprintf(a.Out, "Scenario '%s' has no answer file. Was it started?\n", pick)
+	fmt.Fprintf(a.Out, "The active %s scenario has no recorded answer, so it may not have finished starting.\nRestart it with use-practice stop, then use-practice run\n", pick)
 	return 1
 }
 
 func (a *App) status() int {
 	pick, ok := a.activeScenario()
 	if !ok {
-		fmt.Fprintln(a.Out, "No active scenario.")
+		fmt.Fprintln(a.Out, noActiveScenario)
 		return 0
 	}
 
@@ -296,6 +300,7 @@ func (a *App) printRecordedProcesses(path string) {
 	}
 	defer f.Close()
 
+	p := paletteFor(a.Out, a.noColor)
 	fmt.Fprintf(a.Out, "%-8s %-18s %-10s\n", "PID", "SERVICE", "STATE")
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -303,11 +308,13 @@ func (a *App) printRecordedProcesses(path string) {
 		if len(fields) < 2 || fields[0] == "" {
 			continue
 		}
-		state := "exited"
-		if a.PIDAlive(fields[0]) {
-			state = "running"
+		// Running is the normal state; an exited workload is the one worth
+		// noticing.
+		state := padRight("running", 10)
+		if !a.PIDAlive(fields[0]) {
+			state = padRight(p.warn("exited"), 10)
 		}
-		fmt.Fprintf(a.Out, "%-8s %-18s %-10s\n", fields[0], fields[1], state)
+		fmt.Fprintf(a.Out, "%-8s %-18s %s\n", fields[0], fields[1], state)
 	}
 }
 
@@ -317,8 +324,39 @@ func (a *App) list() {
 	}
 }
 
+// errorf reports a problem on stderr with a red "error:" prefix.
+func (a *App) errorf(format string, args ...any) {
+	p := paletteFor(a.Err, a.noColor)
+	fmt.Fprintf(a.Err, "%s %s\n", p.bad("error:"), fmt.Sprintf(format, args...))
+}
+
+// usageError reports a mistyped command and shows the usage, so the fix is
+// on screen next to the problem.
+func (a *App) usageError(format string, args ...any) int {
+	a.errorf(format, args...)
+	a.writeUsage(a.Err)
+	return 1
+}
+
+// stripColorFlag removes --no-color from args, wherever it appears.
+func (a *App) stripColorFlag(args []string) []string {
+	rest := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--no-color" || arg == "--no-colour" {
+			a.noColor = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	return rest
+}
+
 func (a *App) usage() {
-	fmt.Fprint(a.Out, `Usage:
+	a.writeUsage(a.Out)
+}
+
+func (a *App) writeUsage(w io.Writer) {
+	fmt.Fprint(w, `Usage:
   use-practice
   use-practice run [scenario|random]
   use-practice reveal
@@ -328,6 +366,9 @@ func (a *App) usage() {
 
 Scenarios:
   random cpu memory disk network
+
+Options:
+  --no-color   Turn off colour (also NO_COLOR=1 or USE_PRACTICE_COLOR=never)
 `)
 }
 

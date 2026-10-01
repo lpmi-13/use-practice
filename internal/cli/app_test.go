@@ -426,3 +426,88 @@ func envContains(env []string, wanted string) bool {
 	}
 	return false
 }
+
+func TestStatusMarksExitedWorkloadsWithColour(t *testing.T) {
+	t.Setenv("USE_PRACTICE_COLOR", "always")
+	app, _, out := newTestApp(t)
+	scenarioDir := filepath.Join(app.Root, "scenarios", "cpu")
+	if err := os.WriteFile(filepath.Join(scenarioDir, ".run-id"), []byte("r1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	processes := "123\tcheckout\tx\tx\n456\tqueue\tx\tx\n"
+	if err := os.WriteFile(filepath.Join(scenarioDir, ".processes"), []byte(processes), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := app.Run([]string{"status"}); code != 0 {
+		t.Fatalf("Run returned %d", code)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "\033[33mexited\033[0m") {
+		t.Fatalf("exited should be yellow:\n%q", got)
+	}
+	if strings.Contains(got, "\033[32m") || strings.Contains(got, "m"+"running") {
+		t.Fatalf("running should stay plain:\n%q", got)
+	}
+}
+
+func TestNoColorFlagIsStrippedAndHonoured(t *testing.T) {
+	t.Setenv("USE_PRACTICE_COLOR", "always")
+	app, _, out := newTestApp(t)
+
+	if code := app.Run([]string{"--no-color", "bogus"}); code != 1 {
+		t.Fatalf("Run returned %d", code)
+	}
+	if strings.Contains(out.String(), "\033[") {
+		t.Fatalf("--no-color output should be plain:\n%q", out.String())
+	}
+	if !strings.Contains(out.String(), `unknown command "bogus"`) {
+		t.Fatalf("flag should be stripped before command parsing:\n%s", out.String())
+	}
+}
+
+func TestUsageErrorsSayWhatWentWrong(t *testing.T) {
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"bogus"}, `error: unknown command "bogus"`},
+		{[]string{"run", "gpu"}, `error: unknown scenario "gpu"`},
+		{[]string{"run", "cpu", "disk"}, `error: run takes at most one scenario, got "cpu disk"`},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			app, runner, _ := newTestApp(t)
+			var stdout, stderr bytes.Buffer
+			app.Out, app.Err = &stdout, &stderr
+
+			if code := app.Run(tt.args); code != 1 {
+				t.Fatalf("Run returned %d", code)
+			}
+			if len(runner.commands) != 0 {
+				t.Fatalf("bad input should not run scripts, got %d", len(runner.commands))
+			}
+			if !strings.HasPrefix(stderr.String(), tt.want+"\n") {
+				t.Fatalf("stderr should start with %q:\n%s", tt.want, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "Usage:") {
+				t.Fatalf("usage should follow the error on stderr:\n%s", stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout should be empty:\n%s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestStatusWithoutScenarioSaysHowToStartOne(t *testing.T) {
+	app, _, out := newTestApp(t)
+
+	if code := app.Run([]string{"status"}); code != 0 {
+		t.Fatalf("Run returned %d", code)
+	}
+	if got := out.String(); got != noActiveScenario+"\n" {
+		t.Fatalf("got %q", got)
+	}
+}

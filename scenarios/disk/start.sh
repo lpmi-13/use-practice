@@ -112,7 +112,7 @@ echo
 echo "USE method starting points:"
 echo "  Utilization: iostat -xz 1   (look at %util column)"
 echo "  Saturation:  iostat -xz 1   (aqu-sz / await; compare with %util)"
-echo "  Errors:      kernel storage logs, when access is available"
+echo "  Errors:      sudo dmesg --level=err,warn | tail   (I/O errors)"
 echo
 echo "Host drill-down (find which service does the most I/O):"
 echo "  use-practice status"

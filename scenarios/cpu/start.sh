@@ -72,7 +72,7 @@ EOF
   echo "USE method starting points:"
   echo "  Utilization: top / mpstat -P ALL 1"
   echo "  Saturation:  vmstat 1   (compare 'r' with logical CPU count)"
-  echo "  Errors:      kernel/hardware logs, when access is available"
+  echo "  Errors:      sudo dmesg --level=err,warn | tail"
   echo
   echo "Host drill-down (find which service is hot):"
   echo "  use-practice status"
@@ -118,7 +118,7 @@ EOF
   echo "USE method starting points:"
   echo "  Utilization: top / mpstat -P ALL 1"
   echo "  Saturation:  vmstat 1   (look at 'r' run-queue column)"
-  echo "  Errors:      kernel/hardware logs, when access is available"
+  echo "  Errors:      sudo dmesg --level=err,warn | tail"
   echo
   echo "Host drill-down (find which service is hot):"
   echo "  use-practice status"
@@ -177,7 +177,7 @@ EOF
   echo "  Utilization: top / mpstat -P ALL 1"
   echo "  Saturation:  vmstat 1   (compare 'r' runnable and 'b' blocked columns)"
   echo "  Load:        uptime / cat /proc/loadavg   (load includes runnable and D-state tasks)"
-  echo "  Errors:      kernel/hardware logs, when access is available"
+  echo "  Errors:      sudo dmesg --level=err,warn | tail"
   echo
   echo "Host drill-down (separate runnable CPU from non-I/O D wait):"
   echo "  use-practice status"
