@@ -31,7 +31,7 @@ func TestDetectColor(t *testing.T) {
 
 func TestPlainPaletteLeavesTextAlone(t *testing.T) {
 	p := palette{}
-	if got := p.bold("x") + p.faint("y") + p.reverse("z") + p.bad("a") + p.warn("b"); got != "xyzab" {
+	if got := p.bold("x") + p.faint("y") + p.reverse("z") + p.accent("c") + p.heading("h") + p.bad("a") + p.warn("b"); got != "xyzchab" {
 		t.Fatalf("got %q", got)
 	}
 }

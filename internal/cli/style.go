@@ -6,13 +6,12 @@ import (
 	"strings"
 	"syscall"
 	"unicode/utf8"
-	"unsafe"
 )
 
 // The visual system is deliberately small: the 16 basic ANSI colours (so the
-// user's terminal theme picks the shades), bold/faint/reverse for weight, and
-// red/yellow only for problems. Colour never carries meaning alone: every
-// styled item keeps its word, so output reads the same with colour off.
+// user's terminal theme picks the shades), cyan for menu focus, and red/yellow
+// for problems. Colour never carries meaning alone: every styled item keeps
+// its word, so output reads the same with colour off.
 // Scenario script output is never restyled.
 
 // palette applies styles when colour is on. The zero value is plain output,
@@ -54,6 +53,8 @@ func (p palette) sgr(code, s string) string {
 func (p palette) bold(s string) string    { return p.sgr("1", s) }
 func (p palette) faint(s string) string   { return p.sgr("2", s) }
 func (p palette) reverse(s string) string { return p.sgr("7", s) }
+func (p palette) accent(s string) string  { return p.sgr("36", s) }
+func (p palette) heading(s string) string { return p.sgr("1;36", s) }
 func (p palette) bad(s string) string     { return p.sgr("31", s) }
 func (p palette) warn(s string) string    { return p.sgr("33", s) }
 
@@ -104,14 +105,4 @@ func padRight(s string, width int) string {
 func isTerminal(f *os.File) bool {
 	var termios syscall.Termios
 	return ioctlTermios(int(f.Fd()), syscall.TCGETS, &termios) == nil
-}
-
-// terminalWidth reports the column count of the terminal behind f, or 80.
-func terminalWidth(f *os.File) int {
-	var ws struct{ row, col, xpixel, ypixel uint16 }
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&ws)))
-	if errno != 0 || ws.col == 0 {
-		return 80
-	}
-	return int(ws.col)
 }

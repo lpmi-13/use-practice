@@ -213,6 +213,8 @@ Running `use-practice run` with no scenario opens the resource selector.
 Choosing `cpu`, `memory`, `disk`, or `network` opens a second selector for that
 resource's profiles, with `random` as the first option. In non-interactive
 shells both selectors fall back to `random` so automation does not block.
+Interactive selectors show one menu at a time. Their heading and selection
+cursor use the terminal's cyan accent; `--no-color` or `NO_COLOR=1` disables it.
 
 ## Investigation Flow
 

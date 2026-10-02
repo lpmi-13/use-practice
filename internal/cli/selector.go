@@ -23,10 +23,8 @@ type SelectorSpec struct {
 
 type SelectorFunc func(SelectorSpec) (string, error)
 
-// terminalSelector draws the options below the cursor and redraws them in
-// place as the selection moves, so whatever was on screen before (such as
-// the previous scenario's banner) stays visible. Ctrl-L clears the screen and
-// redraws.
+// terminalSelector gives each menu its own screen, as in use-tool. This keeps
+// previous menu steps and scenario output out of the current choice.
 func terminalSelector(spec SelectorSpec) (string, error) {
 	if len(spec.Options) == 0 {
 		return spec.Fallback, nil
@@ -47,14 +45,10 @@ func terminalSelector(spec SelectorSpec) (string, error) {
 	p := palette{color: detectColor(os.Getenv, isTerminal(out), spec.NoColor)}
 	selected := 0
 	showHelp := false
-	render := func() int {
-		return renderSelector(out, p, terminalWidth(out), spec.Title, spec.Options, selected, showHelp)
-	}
-	rows := render()
 	redraw := func() {
-		clearRenderedRows(out, rows)
-		rows = render()
+		renderSelector(out, p, spec.Title, spec.Options, selected, showHelp)
 	}
+	redraw()
 
 	for {
 		key, err := readSelectorKey(os.Stdin)
@@ -73,8 +67,7 @@ func terminalSelector(spec SelectorSpec) (string, error) {
 			showHelp = !showHelp
 			redraw()
 		case "redraw":
-			fmt.Fprint(out, "\033[H\033[2J")
-			rows = render()
+			redraw()
 		case "enter":
 			fmt.Fprintln(out)
 			return spec.Options[selected].Value, nil
@@ -97,15 +90,14 @@ func terminalSelector(spec SelectorSpec) (string, error) {
 	}
 }
 
-// renderSelector draws the selector starting at the cursor and returns how
-// many terminal rows it occupies. The last line has no trailing newline, so
-// the cursor stays on it and clearRenderedRows can erase upwards from there.
-func renderSelector(w io.Writer, p palette, width int, title string, options []Option, selected int, showHelp bool) int {
-	lines := []string{p.bold(title)}
+// renderSelector clears the terminal before drawing the current menu. The
+// last line has no trailing newline, matching use-tool's selector layout.
+func renderSelector(w io.Writer, p palette, title string, options []Option, selected int, showHelp bool) {
+	lines := []string{p.heading(title)}
 	for i, option := range options {
 		row := fmt.Sprintf("%d. %-12s", i+1, option.Label)
 		if i == selected {
-			row = "> " + p.reverse(row)
+			row = p.accent(">") + " " + p.reverse(row)
 		} else {
 			row = "  " + row
 		}
@@ -113,15 +105,13 @@ func renderSelector(w io.Writer, p palette, width int, title string, options []O
 	}
 	lines = append(lines, selectorHelp(p, len(options), showHelp)...)
 
-	rows := 0
+	fmt.Fprint(w, "\033[H\033[2J")
 	for i, line := range lines {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
 		fmt.Fprint(w, line)
-		rows += visualRows(line, width)
 	}
-	return rows
 }
 
 type helpKey struct {
@@ -154,30 +144,6 @@ func selectorHelp(p palette, optionCount int, showHelp bool) []string {
 		lines = append(lines, "  "+padRight(k.Key, width)+"  "+p.faint(k.Desc))
 	}
 	return lines
-}
-
-// visualRows is how many terminal rows line takes up once it wraps.
-func visualRows(line string, width int) int {
-	if width <= 0 {
-		width = 80
-	}
-	cols := visibleWidth(line)
-	if cols == 0 {
-		return 1
-	}
-	return (cols + width - 1) / width
-}
-
-// clearRenderedRows erases the rows a previous render drew, leaving the
-// cursor at the start of the first of them.
-func clearRenderedRows(w io.Writer, rows int) {
-	if rows <= 0 {
-		return
-	}
-	fmt.Fprint(w, "\r\033[2K")
-	for i := 1; i < rows; i++ {
-		fmt.Fprint(w, "\033[1A\033[2K")
-	}
 }
 
 func readSelectorKey(f *os.File) (string, error) {

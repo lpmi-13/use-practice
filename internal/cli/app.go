@@ -234,6 +234,12 @@ func (a *App) stopAll(quiet bool) int {
 }
 
 func (a *App) reveal() int {
+	terminal := a.outputIsTerminal()
+	if terminal {
+		fmt.Fprintln(a.Out)
+		defer fmt.Fprintln(a.Out)
+	}
+
 	pick, ok := a.activeScenario()
 	if !ok {
 		fmt.Fprintln(a.Out, noActiveScenario)
@@ -244,6 +250,9 @@ func (a *App) reveal() int {
 		data, err := os.ReadFile(answerPath)
 		if err == nil {
 			_, _ = a.Out.Write(data)
+			if terminal && len(data) > 0 && data[len(data)-1] != '\n' {
+				fmt.Fprintln(a.Out)
+			}
 			return 0
 		}
 	}
@@ -252,6 +261,12 @@ func (a *App) reveal() int {
 }
 
 func (a *App) status() int {
+	terminal := a.outputIsTerminal()
+	if terminal {
+		fmt.Fprintln(a.Out)
+		defer fmt.Fprintln(a.Out)
+	}
+
 	pick, ok := a.activeScenario()
 	if !ok {
 		fmt.Fprintln(a.Out, noActiveScenario)
@@ -274,11 +289,19 @@ func (a *App) status() int {
 	for _, base := range a.scenarioStateBases(pick) {
 		processPath := filepath.Join(base, ".processes")
 		if _, err := os.Stat(processPath); err == nil {
+			if terminal {
+				fmt.Fprintln(a.Out)
+			}
 			a.printRecordedProcesses(processPath)
 			break
 		}
 	}
 	return 0
+}
+
+func (a *App) outputIsTerminal() bool {
+	f, ok := a.Out.(*os.File)
+	return ok && isTerminal(f)
 }
 
 func (a *App) activeScenario() (string, bool) {
@@ -301,7 +324,7 @@ func (a *App) printRecordedProcesses(path string) {
 	defer f.Close()
 
 	p := paletteFor(a.Out, a.noColor)
-	fmt.Fprintf(a.Out, "%-8s %-18s %-10s\n", "PID", "SERVICE", "STATE")
+	fmt.Fprintf(a.Out, "%-8s %-18s %s\n", "PID", "SERVICE", "STATE")
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		fields := strings.Split(scanner.Text(), "\t")
@@ -310,9 +333,9 @@ func (a *App) printRecordedProcesses(path string) {
 		}
 		// Running is the normal state; an exited workload is the one worth
 		// noticing.
-		state := padRight("running", 10)
+		state := "running"
 		if !a.PIDAlive(fields[0]) {
-			state = padRight(p.warn("exited"), 10)
+			state = p.warn("exited")
 		}
 		fmt.Fprintf(a.Out, "%-8s %-18s %s\n", fields[0], fields[1], state)
 	}
