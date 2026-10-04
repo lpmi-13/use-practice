@@ -22,8 +22,8 @@ you to include `lo` in interface checks.
 | Dimension    | Tool                          | What you should see                                   |
 |--------------|-------------------------------|-------------------------------------------------------|
 | Utilization  | `sar -n DEV 1`                | Utilization/high-load: one interface dominates throughput |
-| Saturation   | `ss -t -i -n`, `ss -s`        | TCP saturation/high-load: Send-Q, retrans, rwnd/sndbuf-limited |
-| Errors       | `ip -s link`, `sar -n EDEV 1` | drops/overruns on a specific interface                |
+| Saturation   | `ss -t -i -n`, `ss -s`        | TCP saturation/high-load: Send-Q or rwnd/sndbuf-limited; retransmits may appear |
+| Errors       | `ip -s link`, `sar -n EDEV 1` | Drops may appear under high load; no profile guarantees them |
 
 ## Pinning it to host processes
 
@@ -49,8 +49,9 @@ receiver or socket buffers. The high-load profile can show both at once.
 
 ## Why this is a USE problem
 
-A pipe at line rate is **utilization**; queues, send-buffer pressure,
-receive-window limits, retransmits, or drops are **saturation**. Drops/errors
-on the interface are **errors**. Fixes: throttle (`tc`), rate-limit at the
-application, give the noisy service its own network, increase receiver capacity,
-or shape egress.
+A pipe at line rate is **utilization**; queues, send-buffer pressure, and
+receive-window limits are **saturation**. Retransmits can indicate loss or
+congestion; interface drops/errors, when present, are **errors**. The local
+sink and virtual link do not guarantee drops. Fixes: throttle (`tc`), rate-limit
+at the application, give the noisy service its own network, increase receiver
+capacity, or shape egress.

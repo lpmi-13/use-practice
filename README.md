@@ -142,24 +142,40 @@ For targeted local testing, run `use-practice run disk` and choose
 For targeted local testing, run `use-practice run network` and choose
 `utilization`, `saturation`, or `highload` from the profile selector.
 
-### Why There Is No CPU "Errors" Scenario
+### Why There Are No CPU, Disk, or Network "Errors" Profiles
 
 The scenarios exercise the USE triad — utilization, saturation, and errors —
 wherever a workload can legitimately produce each signal. The clearest
-workload-reachable error is in the `memory` scenario, which can drive swap and
-OOM kills. There is deliberately no scenario that produces *CPU* errors.
+repeatable error is the `memory` scenario's `oom` profile: a cgroup limit makes
+`memory.events` report OOM kills. Swap and reclaim indicate saturation, not
+errors. The CPU, disk, and network scenarios still
+show where to check errors, but do not promise to generate them.
 
-In Brendan Gregg's USE method a CPU error is a hardware fault — a Machine Check
-Exception (MCE), an ECC/cache parity error, or thermal throttling — reported via
-`/sys/devices/system/machinecheck/`, EDAC, the per-core `thermal_throttle`
-counters, or the kernel log. Utilization and saturation are products of
-*workload* that any process can generate on demand; a CPU error is a product of
-*hardware*, and userspace cannot make one happen. The only facilities that can
-fabricate one deterministically — `mce-inject` (software MCE injection) and ACPI
-APEI `einj` (firmware error injection) — need root, debugfs, x86, and (for EINJ)
-server-class firmware. None of that is available in the ephemeral, unprivileged
-training VM, so a CPU-errors scenario could never reliably reproduce its target
-state.
+**CPU.** In Brendan Gregg's USE method, CPU error indicators include Machine
+Check Exceptions (MCEs), ECC/cache parity reports, and per-core
+`thermal_throttle` counters. Check `/sys/devices/system/machinecheck/`, EDAC,
+thermal counters, or the kernel log when available. Busy workers can reliably
+raise utilization and run-queue pressure, but cannot reliably produce a hardware
+fault or thermal event in a VM. Facilities such as `mce-inject` and ACPI APEI
+`einj` require privileged access and host support that this lab does not expose.
+
+**Disk.** The worker pre-fills a bounded scratch file (256 MiB or 1 GiB), then
+reuses it for random I/O. Its profiles vary queue depth and duty cycle to make
+device busy time and request latency visible; a long queue or high `await` is
+saturation, not an I/O error. Real device errors, such as failed requests or
+timeouts in the kernel log, depend on the backing storage or controlled fault
+injection. Filling the filesystem to force `ENOSPC` would instead create a
+capacity failure and could disrupt the VM. Neither outcome is a repeatable,
+isolated disk-device error in this exercise.
+
+**Network.** The client sends to a local sink over a veth pair or, when that is
+unavailable, loopback. A slow-reading sink creates TCP send-queue backpressure;
+that is saturation, not a link error. High-load TCP or UDP can show retransmits
+or drops on some hosts, but traffic volume alone does not guarantee an increment
+in interface error/drop counters, especially on virtual links. A reproducible
+errors profile would need explicit link or packet fault injection and a matching
+counter to inspect. This lab checks `ip -s link` and `sar -n EDEV 1` for any
+incidental drops or errors without treating them as a required result.
 
 ## Requirements
 

@@ -48,9 +48,9 @@ else
   PROFILE_LABEL="High load: offered traffic can drive utilization and saturation together"
   SINK_LINE="Sink:      draining"
   if [ "$NETWORK_PROTO" = "udp" ]; then
-    NETWORK_SIGNAL="UDP loss/jitter and interface drops under offered load"
+    NETWORK_SIGNAL="UDP loss/jitter and interface drops may appear under offered load"
   else
-    NETWORK_SIGNAL="TCP throughput, retransmits, and socket queue pressure"
+    NETWORK_SIGNAL="TCP throughput and socket queue pressure; retransmits may appear"
   fi
 fi
 
